@@ -1,0 +1,19 @@
+<link rel="import" href="./Navbar.html">
+<link rel="prop" title="things">
+
+<template>
+    <Navbar page="about"></Navbar>
+    <h1>About us</h1>
+    <p>
+        <conditional>
+            <case if="things.length === 0">There's nothing</case>
+            <case if="things.length < 5">We have ${things.length} things to tell you:</case>
+            <default>There are too many things to tell you</default>
+        </conditional>
+    </p>
+    <ul>
+        <each item in="things">
+            <li>${item}</li>
+        </each>
+    </ul>
+</template>

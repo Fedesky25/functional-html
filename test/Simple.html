@@ -1,0 +1,11 @@
+<link rel="prop" title="name">
+
+<template>
+    <h1>Plain test with no imports</h1>
+    <div class="box ${name ? 'present' : 'null'}">Placeholder text: ${name}</div>
+    <conditional>
+        <case condition="name === 'wow'">wow wow wow</case>
+        <case condition="name === 'nasello'">nasello nasello nasello</case>
+        <case>Niente</case>
+    </conditional>
+</template>

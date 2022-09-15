@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "strictNullChecks": true,
+        "target": "ES2018",
+        "outDir": "dist",
+        "declaration": true
+    },
+    "files": [
+        "lib/index.ts"
+    ]
+}
