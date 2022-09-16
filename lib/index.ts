@@ -141,7 +141,7 @@ function handleSlot(this: void, node: SureNodeTag, ctx: Context) {
     if(!(node.attrs && node.attrs.name)) throw Error(`Missing slot name in ${ctx.path}`);
     const name = node.attrs.name;
     const def = node.content ? walk(node.content, ctx) : "null";
-    return `slots["${name}"] || ${def}`;
+    return `(slots["${name}"] || ${def})`;
 }
 
 function eachClause(this: void, node: SureNodeTag, ctx: Context) {
@@ -208,7 +208,8 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
 
 function handleImport(this: void, node: SureNodeTag, ctx: Context) {
     const name = node.tag;
-    let slots = '{';
+    const slots = new Set<string>();
+    let code = '{';
     if(node.content) {
         const content = flatten(node.content);
         const len = content.length;
@@ -223,13 +224,15 @@ function handleImport(this: void, node: SureNodeTag, ctx: Context) {
                 if(!item.attrs) throw Error(`Direct children of component (${name}) must specify slot attribute (at ${ctx.path})`);
                 slotName = item.attrs.slot;
                 if(slotName == null || slotName === true) throw Error(`Direct children of component (${name}) must specify slot attribute (at ${ctx.path})`);
-                slots += `"${slotName}:${item.content ? walk(item.content, ctx) : "null"}`;
+                if(slots.has(slotName)) throw Error(`Slots cannot be defined more than once: ${slotName} inside ${name} in ${ctx.path}`);
+                slots.add(slotName);
+                code += `"${slotName}":${item.content ? walk(item.content, ctx) : "[]"}`;
             }
         }
     }
-    slots += '}';
+    code += '}';
     const props = node.attrs ? readProps(node.attrs) : "{}";
-    return `components.get("${name}")(${props},${slots})`;
+    return `components.get("${name}")(${props},${code})`;
 }
 
 function normalTag(this: void, node: SureNodeTag, ctx: Context) {
