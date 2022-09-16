@@ -1,6 +1,6 @@
 const test = require("ava").default;
 const { render } = require("posthtml-render");
-const { createComponentFrom, componentify } = require("../dist/index.js");
+const { componentify } = require("../dist/index.js");
 
 test("throws on invalid path", async i => {
     const c = componentify("test/unexistant.html");
@@ -41,21 +41,21 @@ test("conditional: empty condition", i => i.throwsAsync(() => componentify("test
 
 test("each: empty", async i => {
     const c = await componentify("test/each/empty.html");
-    i.is(render(c()), "");
+    i.is(render(c({})), "");
 });
 
 test("each: no item", async i => {
     const c = await componentify("test/each/no-item.html");
-    i.is(render(c()), "");
+    i.is(render(c({})), "aaa");
 });
 
 test("each: only index", async i => {
     const c = await componentify("test/each/only-index.html");
-    i.is(render(c()), "012");
+    i.is(render(c({})), "012");
 });
 
 test("each: not-array", async i => {
     const c = await componentify("test/each/not-array.html");
-    i.throws(() => c());
+    i.throws(() => c({}));
 });
 

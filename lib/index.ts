@@ -146,15 +146,21 @@ function handleSlot(this: void, node: SureNodeTag, ctx: Context) {
 
 function eachClause(this: void, node: SureNodeTag, ctx: Context) {
     const body = node.content;
-    if(!body) throw Error("Missing each clause body");
+    if(!body) {
+        console.warn("Missing each clause body in "+ctx.path);
+        return "null";
+    }
     const attrs = node.attrs;
     if(!attrs) throw Error("Missing each clause attributes (array, item) in "+ctx.path);
     const arrayName = attrs.array || attrs.in;
     if(arrayName == null || arrayName === true || arrayName.length === 0) throw Error("Name of array is missing in each clause in "+ctx.path);
     let itemName = attrs.item;
-    if(itemName == null) throw Error("Missing item attribute in each clause in "+ctx.path);
-    if(itemName === true) itemName = "item";
-    let indexName = attrs.item;
+    if(itemName == null) {
+        itemName = "_";
+        console.warn("Item is unused in each clause in "+ctx.path);
+    }
+    else if(itemName === true) itemName = "item";
+    let indexName = attrs.index;
     if(indexName === true) indexName = "index";
     return `${arrayName}.map(${indexName ? '('+itemName+','+indexName+')' : itemName}=>(${walk(body,ctx)}))`;
 }
