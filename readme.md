@@ -192,7 +192,7 @@ Finally components can accept slots, html code inserted in specified positions.
     <Component>
         <fragment slot="title">First Title</fragment>
         <fragment slot="text">
-            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.Officiis nostrum tempora ullam, molestiae asperiores vel quod reprehenderit recusandae quo eius sed quisquam doloremque, odio fugit, omnis quibusdam unde optio eaque.</p>
+            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
             <ul>
                 <li>first item</li>
                 <li>second item</li>
@@ -204,9 +204,27 @@ Finally components can accept slots, html code inserted in specified positions.
     <Component>
         <fragment slot="title">Second Title</fragment>
         <fragment slot="text">
-            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.Officiis nostrum tempora ullam, molestiae asperiores vel quod reprehenderit recusandae quo eius sed quisquam doloremque, odio fugit, omnis quibusdam unde optio eaque.</p>
+            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
             <Cool-link href="./about" text="Discover more" />
         </fragment>
     </Component>
 </template>
 ```
+
+## Known issues
+
+ - imported components name clashing
+ - prop name can be js keywords
+ - no prop type checking or hinting
+
+## Future features
+
+Depending on my future use of this package, on adoptions and request by others, I am willing to develop new features. The following list is my whishlist of features:
+
+ - Passing additional props to components in a script tag inside component call
+ - Maybe accepting also valid AST inside another script, for even more flexible control
+ - Script tag before template containing code to run on compile time before constructing the AST
+ - When content of a slot is a single tag, allow the option to specify the slot name as an attribute of that tag, without the need of enclosing it inside a fragment
+
+Another brach of possibilities arise in including css and javascript for the browser. This could require defining a new extension and a language server for code editors. A completely analogous objective is already accomplished by [svelte](https://svelte.dev/), whose static rendering requires [SvelteKit](https://kit.svelte.dev/) though, which goes against my idea of simple straigh-forward static render out of the box with little to no setup, targetting small to medium projects.
+Scoped css and scss support could be implemented via [PostCSS](https://postcss.org/). It would be awesome to include Typescript runtime code with easy links to declared DOM nodes (even though some care is needed in cases of conditionals and loops).
