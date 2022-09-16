@@ -5,7 +5,8 @@
         "strictNullChecks": true,
         "target": "ES2018",
         "outDir": "dist",
-        "declaration": true
+        "declaration": true,
+        "module": "CommonJS"
     },
     "files": [
         "lib/index.ts"

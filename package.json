@@ -4,7 +4,6 @@
   "description": "Define, use, and render HTML components with expressions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
   "scripts": {
     "test": "ava",
     "build": "tsc",
