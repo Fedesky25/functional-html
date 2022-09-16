@@ -1,8 +1,9 @@
 {
   "name": "html-components",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "Define, use, and render HTML components with expressions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
     "test": "ava",
@@ -10,7 +11,7 @@
     "watch": "tsc --watch"
   },
   "keywords": [],
-  "author": "",
+  "author": "Federico Guglielmi",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^18.7.16",
