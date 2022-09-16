@@ -1,6 +1,6 @@
 import test from "ava";
 import { render } from "posthtml-render";
-import { HTMLComponent, componentify } from "./dist/index.js";
+import { HTMLComponent, componentify } from "../dist/index.js";
 
 test("throws on invalid path", async i => {
     const c = componentify("test/unexistant.html");
