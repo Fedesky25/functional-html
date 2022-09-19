@@ -1,5 +1,4 @@
 const test = require("ava").default;
-const { render } = require("posthtml-render");
 const { componentify } = require("../dist/index.js");
 
 test("throws on invalid path", async i => {
@@ -22,40 +21,8 @@ test("component renders", async i => {
     i.truthy(c({},{}));
 });
 
-test("conditional: basics", async i => {
-    const c = await componentify("test/conditional/basic.html");
-    i.is(render(c({flag: true}, {})), "true");
-    i.is(render(c({flag: false}, {})), "false");
+test("caching same component", i => {
+    const c1 = componentify("test/Simple.html");
+    const c2 = componentify("test/Simple.html");
+    i.is(c1,c2);
 });
-
-test("conditional: cases after default are skipped", async i => {
-    const c = await componentify("test/conditional/skip-after-def.html");
-    i.is(render(c({value: 2},{})), "default");
-});
-
-test("conditional: wrong content", i => i.throwsAsync(() => componentify("test/conditional/wrong-content.html")));
-
-test("conditional: no cases", i => i.throwsAsync(() => componentify("test/conditional/no-cases.html")));
-
-test("conditional: empty condition", i => i.throwsAsync(() => componentify("test/conditional/empty-condition.html")));
-
-test("each: empty", async i => {
-    const c = await componentify("test/each/empty.html");
-    i.is(render(c({})), "");
-});
-
-test("each: no item", async i => {
-    const c = await componentify("test/each/no-item.html");
-    i.is(render(c({})), "aaa");
-});
-
-test("each: only index", async i => {
-    const c = await componentify("test/each/only-index.html");
-    i.is(render(c({})), "012");
-});
-
-test("each: not-array", async i => {
-    const c = await componentify("test/each/not-array.html");
-    i.throws(() => c({}));
-});
-
