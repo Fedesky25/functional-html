@@ -76,7 +76,7 @@ export async function createComponentFrom(this: void, text: string, path: string
     const aliases = new Map(components);
     const ctx: Context = { code: '', path, aliases };
     const returnExpression = walk(template, ctx);
-    const fn = new Function("props", "slots", "components", `const {${cctx.props.join(',')}} = props; ${ctx.code}; return ${returnExpression}`);
+    const fn = new Function("props", "slots", "$components", `const {${cctx.props.join(',')}} = props; ${ctx.code}; return ${returnExpression}`);
     return (props: Props, slots: Slots) => fn(props, slots, aliases);
 }
 
@@ -236,7 +236,7 @@ function handleImport(this: void, node: SureNodeTag, ctx: Context) {
     }
     code += '}';
     const props = node.attrs ? readProps(node.attrs) : "{}";
-    return `components.get("${name}")(${props},${code})`;
+    return `$components.get("${name}")(${props},${code})`;
 }
 
 function normalTag(this: void, node: SureNodeTag, ctx: Context) {
