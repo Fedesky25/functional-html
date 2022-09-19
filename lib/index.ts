@@ -36,15 +36,19 @@ const validComponentName = /[\w-]+/;
 const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
-const cache = new Map<string, HTMLComponent>();
+const cache = new Map<string, Promise<HTMLComponent>>();
 
-export async function componentify(path: string) {
-    const cached = cache.get(path);
-    if(cached) return cached;
+export function componentify(path: string) {
+    let c = cache.get(path);
+    if(c) return c;
+    c = componentFromFile(path);
+    cache.set(path, c);
+    return c;
+}
+
+async function componentFromFile(path: string) {
     const file = await readFile(path, "utf-8");
-    const res = await createComponentFrom(file, path);
-    cache.set(path, res);
-    return res;
+    return await createComponentFrom(file, path);
 }
 
 export async function createComponentFrom(this: void, text: string, path: string): Promise<HTMLComponent> {
