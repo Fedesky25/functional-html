@@ -7,7 +7,16 @@ type Tree = (Node|Node[])[];
 type Props = Record<string, any>;
 type Slots = Record<string, Tree>;
 
-type HTMLComponent = (props: Props, slots: Slots) => Tree;
+interface SlotOptions {
+    none: void;
+    single: Tree;
+    multiple: Record<string, Tree>;
+}
+type SlotType = keyof SlotOptions
+interface HTMLComponent<S extends SlotType = SlotType> {
+    (props: Props, slots: SlotOptions[S]): Tree;
+    readonly slotType: S;
+}
 type ComponentTask = Promise<[string, HTMLComponent]>;
 
 interface CreationContext {
@@ -21,6 +30,7 @@ interface Context {
     path: string;
     code: string;
     aliases: Map<string, HTMLComponent>;
+    slotType: keyof SlotOptions;
 }
 
 type Attributes = Record<string, string|true>;
@@ -74,10 +84,12 @@ export async function createComponentFrom(this: void, text: string, path: string
     if(!template) throw Error("Missing template in "+path);
     const components = await Promise.all(cctx.tasks);
     const aliases = new Map(components);
-    const ctx: Context = { code: '', path, aliases };
+    const ctx: Context = { code: '', path, aliases, slotType: "none" };
     const returnExpression = walk(template, ctx);
     const fn = new Function("props", "slots", "$components", `const {${cctx.props.join(',')}} = props; ${ctx.code}; return ${returnExpression}`);
-    return (props: Props, slots: Slots) => fn(props, slots, aliases);
+    const res = (props: Props, slots: Slots) => fn(props, slots, aliases);
+    Object.defineProperty(res, "slotType", { value: ctx.slotType, writable: false });
+    return res as HTMLComponent;
 }
 
 function parseLink(this: void, node: SureNodeTag, ctx: CreationContext) {
@@ -142,9 +154,20 @@ function walk(this: void, tree: Tree, ctx: Context) {
 }
 
 function handleSlot(this: void, node: SureNodeTag, ctx: Context) {
-    if(!(node.attrs && node.attrs.name)) throw Error(`Missing slot name in ${ctx.path}`);
-    const name = node.attrs.name;
     const def = node.content ? walk(node.content, ctx) : "null";
+    const name = node.attrs && node.attrs.name;
+    if(ctx.slotType === "none") {
+        if(name) {
+            ctx.slotType = "multiple";
+            return `(slots["${name}"] || ${def})`;
+        }
+        else {
+            ctx.slotType = "single";
+            return `(slots || ${def})`;
+        }
+    }
+    if(ctx.slotType === "single") throw Error(`There cannot be more than one (unnamed) slot: consider using named slots (${ctx.path})`);
+    if(!name) throw Error("Slots must have a name in "+ctx.path);
     return `(slots["${name}"] || ${def})`;
 }
 
@@ -212,31 +235,45 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
 
 function handleImport(this: void, node: SureNodeTag, ctx: Context) {
     const name = node.tag;
-    const slots = new Set<string>();
-    let code = '{';
-    if(node.content) {
-        const content = flatten(node.content);
-        const len = content.length;
-        let item: SureNode;
-        let slotName: string|true;
-        for(var i=0; i<len; i++) {
-            item = content[i];
-            if(typeof item === "string") {
-                if(!spaceRegExp.test(item)) console.warn(`Text "${item}" inside ${name} component call is skipped (at ${ctx.path})`);
-            }
-            else {
-                if(!item.attrs) throw Error(`Direct children of component (${name}) must specify slot attribute (at ${ctx.path})`);
-                slotName = item.attrs.slot;
-                if(slotName == null || slotName === true) throw Error(`Direct children of component (${name}) must specify slot attribute (at ${ctx.path})`);
-                if(slots.has(slotName)) throw Error(`Slots cannot be defined more than once: ${slotName} inside ${name} in ${ctx.path}`);
-                slots.add(slotName);
-                code += `"${slotName}":${item.content ? walk(item.content, ctx) : "[]"}`;
-            }
-        }
-    }
-    code += '}';
+    const content = node.content;
+    const type = (ctx.aliases.get(name) as HTMLComponent).slotType;
+    const code = type === "multiple" 
+    ? handleImportWithMultiple(content, name, ctx) 
+    : type === "single" 
+    ? (content ? walk(content, ctx) : "null") 
+    : (content && content.length > 0 && content[0] !== '' && console.warn(`${name} component has no slot: skipping its content in ${ctx.path}`), "null");
     const props = node.attrs ? readProps(node.attrs) : "{}";
     return `$components.get("${name}")(${props},${code})`;
+}
+
+function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx: Context) {
+    if(!_content) return "{}";
+    let code = '{';
+    const content = flatten(_content);
+    const len = content.length;
+    const slots = new Set<string>();
+    let item: SureNode;
+    let name: string|true;
+    for(var i=0; i<len; i++) {
+        item = content[i];
+        if(typeof item === "string") {
+            if(!spaceRegExp.test(item)) console.warn(`Text "${item}" inside ${alias} component call is skipped (at ${ctx.path})`);
+            continue;
+        }
+        if(!item.attrs) throw Error(`Direct children of component (${alias}) must specify slot attribute (at ${ctx.path})`);
+        name = item.attrs.slot;
+        if(name == null || name === true) throw Error(`Direct children of component (${alias}) must specify slot attribute (at ${ctx.path})`);
+        if(slots.has(name)) throw Error(`Slots cannot be defined more than once: ${name} inside ${alias} in ${ctx.path}`);
+        slots.add(name);
+        code += `"${name}":`;
+        if(item.tag === "fragment") code += item.content ? walk(item.content, ctx) : "[]";
+        else {
+            delete item.attrs.slot;
+            code += normalTag(item, ctx);
+        }
+        code += `"${name}":${item.content ? walk(item.content, ctx) : "[]"}`;
+    }
+    return code + '}';
 }
 
 function normalTag(this: void, node: SureNodeTag, ctx: Context) {
