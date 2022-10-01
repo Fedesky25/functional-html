@@ -264,6 +264,7 @@ function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx
         name = item.attrs.slot;
         if(name == null || name === true) throw Error(`Direct children of component (${alias}) must specify slot attribute (at ${ctx.path})`);
         if(slots.has(name)) throw Error(`Slots cannot be defined more than once: ${name} inside ${alias} in ${ctx.path}`);
+        if(slots.size) code += ',';
         slots.add(name);
         code += `"${name}":`;
         if(item.tag === "fragment") code += item.content ? walk(item.content, ctx) : "[]";
@@ -271,7 +272,6 @@ function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx
             delete item.attrs.slot;
             code += normalTag(item, ctx);
         }
-        code += `"${name}":${item.content ? walk(item.content, ctx) : "[]"}`;
     }
     return code + '}';
 }
