@@ -13,7 +13,12 @@
     "type": "git",
     "url": "git+https://github.com/Fedesky25/functional-html.git"
   },
-  "keywords": [],
+  "keywords": [
+    "html",
+    "components",
+    "expression",
+    "tree"
+  ],
   "author": "Federico Guglielmi",
   "license": "MIT",
   "devDependencies": {
