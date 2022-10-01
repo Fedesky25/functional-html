@@ -1,13 +1,17 @@
 {
-  "name": "html-components",
+  "name": "functional-html",
   "version": "0.2.1",
-  "description": "Define, use, render HTML/XML with components and js expression",
+  "description": "Use HTML/XML files as components with js expression",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "test": "ava",
     "build": "tsc",
     "watch": "tsc --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fedesky25/functional-html.git"
   },
   "keywords": [],
   "author": "Federico Guglielmi",

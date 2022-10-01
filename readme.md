@@ -1,6 +1,6 @@
 # Functional HTML
 
-Start using HTML with components and js expression! This is a small typescript package that allows you to convert html files into component functions that generate standard PostHTML [Abstract Syntax Tree](https://www.wikiwand.com/en/Abstract_syntax_tree) (AST), which can be postprocessed and rendered.
+Start using HTML/XML as components with js expression! This is a small typescript package that allows you to convert html files into component functions that generate standard PostHTML [Abstract Syntax Tree](https://www.wikiwand.com/en/Abstract_syntax_tree) (AST), which can be postprocessed and rendered.
 
 ## Example 
 
