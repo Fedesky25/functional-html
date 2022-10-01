@@ -3,3 +3,4 @@ test
 lib
 prova.js
 .gitignore
+*.hidden.*
