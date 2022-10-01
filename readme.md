@@ -65,22 +65,35 @@ Each file describing a valid html component must have as direct child a single `
 Other valid direct children are `link` tags with `rel` attribute set to `import` or `prop`.
 The HTML code inside the template has superpowers, described in the following sections.
 
+ 1. [Declaring props](#declaring-props)
+ 2. [Value interpolation](#value-interpolation)
+ 4. [Toggle classes](#toggle-classes)
+ 3. [Conditional statement](#conditional-statement)
+ 4. [Importing component](#importing-components)
+ 5. [Using components](#using-components)
+ 6. [Component slots](#component-slots)
+
 ### Declaring props
 
-Props can be passed to any component, they are an object with string key and any value. Inside the template props are always accessible inside the `props` variable, but to ease the use of them one can declare them like so:
+Props can be passed to any component function as the first argument, they are an object with string key and any value. Inside the template, props are always accessible inside the `props` variable, but to ease their use one can declare them like so:
 
 ```html
 <link rel="prop" title="things">
 <link rel="prop" title="flag">
 ```
 
-Which is translated into the js instruction
+Which is translated into the js function
 
 ```js
-const { things, flag } = props;
+function(props, slots) {
+    // ...
+    const { things, flag } = props;
+    // ...
+    return /* some AST */;
+}
 ```
 
-Therefore, the name of each prop must be a valid js name.
+Therefore, the name of each declared prop must be a valid js variable name.
 
 ### Value interpolation
 
@@ -161,7 +174,25 @@ Imported components are treated as HTML tags, but with the passibility to pass t
 
 ### Component slots
 
-Finally components can accept slots, html code inserted in specified positions.
+Finally components can accept slots, html code inserted in specified positions. Depending on the slots present (or not) in a component, different cases occur and different values are needed as second argument of the component function. The slot type is retrievable through the `slotType` readonly property of the component function.
+
+| `slotType` | meaning | second argument | direct children |
+| :--------: | ------- | --------------- | --------------- |
+| `"none"`   | no slots | void (anyway not used) | are skipped
+| `"single"` | only one unnamed slot | valid AST | define the slot |
+| `"multiple"` | one or more named slots | object with string keys and AST values | must have a `slot` attribute
+
+Whether a component has unnamed or named slots, the same slot can appear multiple times inside it and their content define the default value. In the importer, however, the slot can be defined only once.
+
+#### Multi-slotted components
+
+A few more words must be spent on component with slot type of multiple. The definition of any named slot is inside a `fragment` node, which must have a slot attribute. When a passed named slot is a single node, the `fragment` wrapping can be skipped and the node (with a slot attribute) can be a direct child of the component node.
+
+If a declared slot is not defined in the component node (through a fragment or node), its default value is used.
+Defining in the component node a non-declared slot has no effect but useless expression evaulation.
+Declaring an empty `fragment` node (even self closing) is equivalent to discarding the default value and replacing empty.
+
+#### Example
 
 ```html
 <!-- Cool-link.html -->
@@ -175,12 +206,26 @@ Finally components can accept slots, html code inserted in specified positions.
     </a>
 <template>
 
-<!-- Component.html -->
+<!-- Single.html -->
+<link rel="prop" title="twice">
+<template>
+    <slot />
+    <conditional>
+        <case if="twice">
+            <slot>
+                <p>This slot has a default value, while the first one didn't</p>
+            </slot>
+        </case>
+    </conditional>
+<template>
+
+<!-- Article.html -->
+<link rel="prop" title="twice">
 <template>
     <div class="container">
         <h3><slot name="title" /></h3>
         <div class="text">
-            <slot name="text" />
+            <slot name="text">There's nothing here</slot>
         </div>
     </div>
 <template>
@@ -188,8 +233,12 @@ Finally components can accept slots, html code inserted in specified positions.
 <!-- page.html -->
 <link rel="import" href="./Component.html">
 <link rel="import" href="./Cool-link.html">
+<link rel="import" href="./Single.html">
 <template>
-    <Component>
+    <Single double="@ true">jar</Single>
+    <Single double="@ true"/>
+    <hr class="divisor">
+    <Article>
         <fragment slot="title">First Title</fragment>
         <fragment slot="text">
             <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
@@ -199,16 +248,59 @@ Finally components can accept slots, html code inserted in specified positions.
                 <li>third item</li>
             </ul>
         </fragment>
-    </Component>
-    <hr class="divisor">
-    <Component>
+    </Article>
+    <Article>
         <fragment slot="title">Second Title</fragment>
         <fragment slot="text">
             <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
             <Cool-link href="./about" text="Discover more" />
         </fragment>
-    </Component>
+    </Article>
+    <Article>
+        <fragment slot="title">Third Title</fragment>
+        <p slot="text">Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
+    </Article>
+    <Article>
+        <fragment slot="title">Fourth Title</fragment>
+    </Article>
 </template>
+
+<!-- Result (prettified) -->
+jarjar
+<p>This slot has a default value, while the first one didn't</p>
+<hr class="divisor">
+<div class="container">
+    <h3>First Title</h3>
+    <div class="text">
+        <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
+        <ul>
+            <li>first item</li>
+            <li>second item</li>
+            <li>third item</li>
+        </ul>
+    </div>
+</div>
+<div class="container">
+    <h3>Second Title</h3>
+    <div class="text">
+        <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
+        <a href="./about">
+            <div class="border-1"></div>
+            <span class="text">Discover more</span>
+            <div class="border-2"></div>
+        </a>
+    </div>
+</div>
+<div class="container">
+    <h3>Third Title</h3>
+    <div class="text">
+        <p>Lorem ipsum dolor sit amet consectetur adipisicing elit.</p>
+    </div>
+</div>
+<div class="container">
+    <h3>Fourth Title</h3>
+    <div class="text">There's nothing here</div>
+</div>
 ```
 
 ## Known issues
