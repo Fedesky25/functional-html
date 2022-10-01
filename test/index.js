@@ -1,4 +1,5 @@
 const test = require("ava").default;
+const { render } = require("posthtml-render");
 const { componentify } = require("../dist/index.js");
 
 test("throws on invalid path", async i => {
@@ -12,13 +13,19 @@ test("throws on wrong extension", async i => {
 })
 
 test("throws on empty template", async i => {
-    const c = componentify("test/NoTemplate.html");
+    const c = componentify("test/basics/NoTemplate.html");
     await i.throwsAsync(c);
 });
 
 test("component renders", async i => {
     const c = await componentify("test/Simple.html");
     i.truthy(c({},{}));
+});
+
+test("single node template", async i => {
+    const c = await componentify("test/basics/SingleNode.html");
+    const r = render(c({}));
+    i.is(r, "<p>single node</p>");
 });
 
 test("caching same component", i => {

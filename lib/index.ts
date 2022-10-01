@@ -76,9 +76,13 @@ export async function createComponentFrom(this: void, text: string, path: string
         if(typeof element !== "object") continue;
         if(element.tag === "link") parseLink(element, cctx);
         else if(element.tag === "template") {
-            if(template) console.warn("Multiple template definition in "+path);
-            else if(!Array.isArray(element.content)) throw Error(`${path} has no template content`);
+            if(template) throw Error("Multiple template definition in "+path);
+            if(!Array.isArray(element.content)) throw Error(`${path} has no template content`);
             else template = element.content;
+        } else if(element.attrs && element.attrs.template != null) {
+            if(template) throw Error("Multiple template definition in "+path);
+            delete element.attrs.template;
+            template = [element];
         }
     }
     if(!template) throw Error("Missing template in "+path);
