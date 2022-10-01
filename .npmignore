@@ -4,3 +4,5 @@ lib
 prova.js
 .gitignore
 *.hidden.*
+tsconfig.json
+pnpm-lock.yaml
