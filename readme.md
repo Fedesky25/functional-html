@@ -1,6 +1,6 @@
-# HTML Components
+# Functional HTML
 
-Start using HTML with components! This is a small typescript package that allows you to convert html component files into standard PostHTML [Abstract Syntax Tree](https://www.wikiwand.com/en/Abstract_syntax_tree) (AST).
+Start using HTML with components and js expression! This is a small typescript package that allows you to convert html files into component functions that generate standard PostHTML [Abstract Syntax Tree](https://www.wikiwand.com/en/Abstract_syntax_tree) (AST), which can be postprocessed and rendered.
 
 ## Example 
 
@@ -25,20 +25,22 @@ An `index.html` file:
 <link rel="import" href="./Navbar.html">
 <link rel="prop" title="things">
 <template>
-    <Navbar page="about"></Navbar>
-    <h1>About us</h1>
-    <p>
-        <conditional>
-            <case if="things.length === 0">There's nothing</case>
-            <case if="things.length < 5">We have ${things.length} things to tell you:</case>
-            <default>There are too many things to tell you</default>
-        </conditional>
-    </p>
-    <ul>
-        <each item in="things">
-            <li>${item}</li>
-        </each>
-    </ul>
+    <Navbar page="about" />
+    <main>
+        <h1>About us</h1>
+        <p>
+            <conditional>
+                <case if="things.length === 0">There's nothing</case>
+                <case if="things.length < 5">We have ${things.length} things to tell you:</case>
+                <default>There are too many things to tell you</default>
+            </conditional>
+        </p>
+        <ul>
+            <each item in="things">
+                <li>${item}</li>
+            </each>
+        </ul>
+    </main>
 </template>
 ```
 
