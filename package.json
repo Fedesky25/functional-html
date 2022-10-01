@@ -15,7 +15,7 @@
   },
   "keywords": [],
   "author": "Federico Guglielmi",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^18.7.16",
     "ava": "^4.3.3",
