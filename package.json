@@ -1,7 +1,7 @@
 {
   "name": "html-components",
   "version": "0.2.1",
-  "description": "Define, use, and render HTML components with expressions",
+  "description": "Define, use, render HTML/XML with components and js expression",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
