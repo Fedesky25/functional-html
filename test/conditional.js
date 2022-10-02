@@ -4,7 +4,7 @@ const { componentify } = require("../dist/index.js");
 
 test("conditional: basics", async i => {
     const c = await componentify("test/conditional/basic.html");
-    i.is(render(c({flag: true}, {})), "true");
+    i.is(render(c({flag: true}, {})), "<span>true</span>");
     i.is(render(c({flag: false}, {})), "false");
 });
 

@@ -1,8 +1,8 @@
 <link rel="prop" title="flag">
 <template>
     <conditional>
-        <case if>Invalid</case>
-        <case if="flag">true</case>
-        <default>false</default>
+        <fragment if>Invalid</fragment>
+        <fragment if="flag">true</fragment>
+        <fragment else>false</fragment>
     </conditional>
 </template>

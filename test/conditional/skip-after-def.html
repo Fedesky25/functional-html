@@ -1,8 +1,8 @@
 <link rel="prop" title="value">
 <template>
     <conditional>
-        <case if="value === 1">one</case>
-        <default>default</default>
-        <case if="value === 2">two</case>
+        <fragment if="value === 1">one</fragment>
+        <fragment else>default</fragment>
+        <fragment if="value === 2">two</fragment>
     </conditional>
 </template>
