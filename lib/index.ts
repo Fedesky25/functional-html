@@ -196,44 +196,40 @@ function eachClause(this: void, node: SureNodeTag, ctx: Context) {
     return `${arrayName}.map(${indexName ? '('+itemName+','+indexName+')' : itemName}=>(${walk(body,ctx)}))`;
 }
 
+function readFragementOrTag(node: SureNodeTag, frag_def: string, rem_attr: string, ctx: Context) {
+    if(node.tag === "fragment") return node.content ? walk(node.content, ctx) : frag_def;
+    node.attrs && (delete node.attrs[rem_attr]);
+    return normalTag(node, ctx);
+}
+
 function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
     if(!node.content) throw Error("Missing conditional clause body");
     const cases = flatten(node.content);
     const len = cases.length;
     let item: SureNode;
     let code = '';
-    let attrs: Record<string, string|true> | undefined;
+    let _else = false;
     let condition: string | true;
-    let content: Tree|undefined;
 
-    loop:
-    for(var i=0; i<len; i++) {
+    for(var i=0; i<len && !_else; i++) {
         item = cases[i];
         if(typeof item === "string") {
             if(!spaceRegExp.test(item)) console.warn(`String "${item}" inside conditional tag is skipped (at ${ctx.path})`);
             continue;
         }
-        switch(item.tag) {
-            case "case": {
-                attrs = item.attrs;
-                condition = attrs ? (attrs.condition || attrs.if || true) : true;
-                if(condition === true) throw Error("Missing condition in case in "+ctx.path);
-                content = item.content;
-                code += `(${condition})?${content ? walk(content, ctx) : "null"}:`;
-                break;
-            }
-            case "default": {
-                content = item.content;
-                code += (content ? walk(content,ctx) : "null"); 
-                break loop;
-            }
-            default: {
-                console.warn(`Only "case" and "default" tags are allowed inside conditional: got ${item.tag} in ${ctx.path}`);
-            }
+        if(!item.attrs) throw Error("No if or else attribute on child of conditional in "+ctx.path);
+        _else = "else" in item.attrs;
+        if(_else) {
+            if(i+1 < len) console.warn("else in conditinal must be the last node child in "+ctx.path);
+            code += readFragementOrTag(item, "null", "else", ctx);
+            continue
         }
+        condition = item.attrs.if;
+        if(typeof condition !== "string" || condition.length === 0) throw Error(`Missing if attribute inside conditional (at ${ctx.path})`);
+        code += `(${condition})?${readFragementOrTag(item, "null", "if", ctx)}:`;
     }
     if(code.length === 0) console.warn(`Missing conditional content in ${ctx.path}`);
-    if(i >= len) code += "null";
+    if(!_else) code += "null";
     return code;
 }
 
@@ -270,12 +266,7 @@ function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx
         if(slots.has(name)) throw Error(`Slots cannot be defined more than once: ${name} inside ${alias} in ${ctx.path}`);
         if(slots.size) code += ',';
         slots.add(name);
-        code += `"${name}":`;
-        if(item.tag === "fragment") code += item.content ? walk(item.content, ctx) : "[]";
-        else {
-            delete item.attrs.slot;
-            code += normalTag(item, ctx);
-        }
+        code += `"${name}":${readFragementOrTag(item, "[]", "slot", ctx)}`;
     }
     return code + '}';
 }
@@ -347,7 +338,9 @@ function flatten(tree: Tree) {
 
 const quote1RegExp = /"/g;
 const quote2RegExp = /`/g;
+const slashRegExp = /\\/g;
 function quote(str: string) {
+    str = str.replace(slashRegExp, "\\\\");
     if(str.indexOf("${") === -1) return '"' + str.replace(quote1RegExp, '\\"') + '"';
     else return '`' + str.replace(quote2RegExp, '\\`') + '`';
 }
