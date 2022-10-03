@@ -47,6 +47,7 @@ const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
 const cache = new Map<string, Promise<HTMLComponent>>();
+const helpers = new Map<string, Function>();
 
 export function componentify(path: string) {
     let c = cache.get(path);
@@ -136,8 +137,8 @@ function walk(this: void, tree: Tree, ctx: Context) {
     for(var i=0; i<len; i++) {
         node = flat[i];
         if(typeof node === "string") {
-            node = node.replace(lineRegExp, '');
-            if(node) code.push(quote(node));
+            node = node.replace(lineRegExp, ' ');
+            if(node !== ' ') code.push(quote(node));
         }
         else {
             const tag = node.tag;
