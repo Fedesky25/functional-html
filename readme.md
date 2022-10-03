@@ -30,9 +30,9 @@ An `index.html` file:
         <h1>About us</h1>
         <p>
             <conditional>
-                <case if="things.length === 0">There's nothing</case>
-                <case if="things.length < 5">We have ${things.length} things to tell you:</case>
-                <default>There are too many things to tell you</default>
+                <fragment if="things.length === 0">There's nothing</fragment>
+                <fragment if="things.length < 5">We have ${things.length} things to tell you:</fragment>
+                <fragment else>There are too many things to tell you</fragment>
             </conditional>
         </p>
         <ul>
@@ -125,18 +125,16 @@ The shorthand notation `class:name` stands for `class:name="name"`.
 
 ### Conditional statement
 
-Multiple cases can be specified inside a `conditional`: they are evaluated in the same order in which they appear. The condition of each case must be specified in the `if` attribute which can contain any valid javascript. Optionally a `default` tag which is evaluated when all previous cases failed (all cases after a default are thus skipped). Obviously, inside each case (or default) any html is valid. 
+The `conditional` tag allows conditional rendering of its children. In particular, any direct child must specify an `if` attribute with any js expression: the first child with truthy condition is rendered. An `else` attribute can be used insted of the `if` to denote the child to be rendered if all previous are falsey. When grouping together multiple tags or strings, use a `fragment` node.
 
 ```html
 <link rel="prop" title="msg">
 <template>
     <conditional>
-        <case if="!msg">Nothing here</case>
-        <case if="typeof msg === 'string'">
-            <p>We have a message for you: ${msg}</p>
-        </case>
-        <default>Something is off...</default>
-        <case if="true">This will never be evaluated</case>
+        <fragment if="!msg">Nothing here</fragment>
+        <p if="typeof msg === 'string'">We have a message for you: ${msg}</p>
+        <fragment else>Something is off...</fragment>
+        <fragment if="true">This will never be evaluated</fragment>
     </conditional>
 </template>
 ```
