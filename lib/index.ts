@@ -47,7 +47,6 @@ const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
 const cache = new Map<string, Promise<HTMLComponent>>();
-const helpers = new Map<string, Function>();
 
 export function componentify(path: string) {
     let c = cache.get(path);
@@ -140,22 +139,29 @@ function walk(this: void, tree: Tree, ctx: Context) {
             node = node.replace(lineRegExp, ' ');
             if(node !== ' ') code.push(quote(node));
         }
-        else {
-            const tag = node.tag;
-            code.push(
-                tag == "slot"
-                ? handleSlot(node, ctx)
-                : tag == "each"
-                ? eachClause(node, ctx)
-                : tag == "conditional"
-                ? conditionalClause(node, ctx)
-                : ctx.aliases.has(tag)
-                ? handleImport(node, ctx)
-                : normalTag(node, ctx)
-            );
-        }
+        else code.push(dispatchNodeTag(node, ctx));
     }
     return '[' + code.join(',') + ']'
+}
+
+function dispatchNodeTag(node: SureNodeTag, ctx: Context) {
+    const tag = node.tag;
+    switch(tag) {
+        case "slot": return handleSlot(node, ctx);
+        case "each": return eachClause(node, ctx);
+        case "conditional": return conditionalClause(node, ctx);
+        default: {
+            const component = ctx.aliases.get(tag);
+            if(component) return handleImport(node, component.slotType, ctx);
+            return normalTag(node, ctx);
+        }
+    }
+}
+
+function dispatchNodeTagOrFragment(node: SureNodeTag, fragmentDefault: string, removeAttr: string, ctx: Context) {
+    if(node.tag === "fragment") return node.content ? walk(node.content, ctx) : fragmentDefault;
+    node.attrs && (delete node.attrs[removeAttr]);
+    return dispatchNodeTag(node, ctx);
 }
 
 function handleSlot(this: void, node: SureNodeTag, ctx: Context) {
@@ -197,12 +203,6 @@ function eachClause(this: void, node: SureNodeTag, ctx: Context) {
     return `${arrayName}.map(${indexName ? '('+itemName+','+indexName+')' : itemName}=>(${walk(body,ctx)}))`;
 }
 
-function readFragementOrTag(node: SureNodeTag, frag_def: string, rem_attr: string, ctx: Context) {
-    if(node.tag === "fragment") return node.content ? walk(node.content, ctx) : frag_def;
-    node.attrs && (delete node.attrs[rem_attr]);
-    return normalTag(node, ctx);
-}
-
 function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
     if(!node.content) throw Error("Missing conditional clause body");
     const cases = flatten(node.content);
@@ -222,22 +222,21 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
         _else = "else" in item.attrs;
         if(_else) {
             if(i+1 < len) console.warn("else in conditinal must be the last node child in "+ctx.path);
-            code += readFragementOrTag(item, "null", "else", ctx);
+            code += dispatchNodeTagOrFragment(item, "null", "else", ctx);
             continue
         }
         condition = item.attrs.if;
         if(typeof condition !== "string" || condition.length === 0) throw Error(`Missing if attribute inside conditional (at ${ctx.path})`);
-        code += `(${condition})?${readFragementOrTag(item, "null", "if", ctx)}:`;
+        code += `(${condition})?${dispatchNodeTagOrFragment(item, "null", "if", ctx)}:`;
     }
     if(code.length === 0) console.warn(`Missing conditional content in ${ctx.path}`);
     if(!_else) code += "null";
     return code;
 }
 
-function handleImport(this: void, node: SureNodeTag, ctx: Context) {
+function handleImport(this: void, node: SureNodeTag, type: SlotType, ctx: Context) {
     const name = node.tag;
     const content = node.content;
-    const type = (ctx.aliases.get(name) as HTMLComponent).slotType;
     const code = type === "multiple" 
     ? handleImportWithMultiple(content, name, ctx) 
     : type === "single" 
@@ -267,7 +266,7 @@ function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx
         if(slots.has(name)) throw Error(`Slots cannot be defined more than once: ${name} inside ${alias} in ${ctx.path}`);
         if(slots.size) code += ',';
         slots.add(name);
-        code += `"${name}":${readFragementOrTag(item, "[]", "slot", ctx)}`;
+        code += `"${name}":${dispatchNodeTagOrFragment(item, "[]", "slot", ctx)}`;
     }
     return code + '}';
 }
