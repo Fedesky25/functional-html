@@ -4,8 +4,9 @@ const { componentify } = require("../dist/index.js");
 
 test("conditional: basics", async i => {
     const c = await componentify("test/conditional/basic.html");
-    i.is(render(c({flag: true}, {})), "<span>true</span>");
-    i.is(render(c({flag: false}, {})), "false");
+    i.is(render(c({type: 0}, {})), "<span>zero</span>");
+    i.is(render(c({type: 1}, {})), "<p>component</p>");
+    i.is(render(c({type: 432}, {})), "any");
 });
 
 test("conditional: cases after default are skipped", async i => {

@@ -1,7 +1,10 @@
-<link rel="prop" title="flag">
+<link rel="import" href="../Component.html">
+<link rel="prop" title="type">
+
 <template>
     <conditional>
-        <span if="flag">true</span>
-        <fragment else>false</fragment>
+        <span if="type === 0">zero</span>
+        <Component if="type === 1"></Component>
+        <fragment else>any</fragment>
     </conditional>
 </template>
