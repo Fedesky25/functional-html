@@ -66,7 +66,8 @@ export async function createComponentFrom(this: void, text: string, path: string
     const tasks: ComponentTask[] = [];
     const cctx: CreationContext = { path, dir: dirname(path), props, tasks };
     const base = flatten(parser(text, {
-        recognizeNoValueAttribute: true
+        recognizeNoValueAttribute: true,
+        recognizeSelfClosing: true,
     }));
     const len = base.length;
     let element: SureNode;
@@ -212,18 +213,17 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
     let _else = false;
     let condition: string | true;
 
-    for(var i=0; i<len && !_else; i++) {
+    for(var i=0; i<len; i++) {
         item = cases[i];
         if(typeof item === "string") {
             if(!spaceRegExp.test(item)) console.warn(`String "${item}" inside conditional tag is skipped (at ${ctx.path})`);
             continue;
         }
         if(!item.attrs) throw Error("No if or else attribute on child of conditional in "+ctx.path);
-        _else = "else" in item.attrs;
-        if(_else) {
+        if(_else = "else" in item.attrs) {
             if(i+1 < len) console.warn("else in conditinal must be the last node child in "+ctx.path);
             code += dispatchNodeTagOrFragment(item, "null", "else", ctx);
-            continue
+            break;
         }
         condition = item.attrs.if;
         if(typeof condition !== "string" || condition.length === 0) throw Error(`Missing if attribute inside conditional (at ${ctx.path})`);
