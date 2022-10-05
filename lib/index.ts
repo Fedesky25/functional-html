@@ -70,7 +70,7 @@ export async function createComponentFrom(this: void, text: string, path: string
     }));
     const len = base.length;
     let element: SureNode;
-    let template: Tree|null = null;
+    let template: SureNodeTag|Tree|null = null;
     for(var i=0; i< len; i++) {
         element = base[i];
         if(typeof element !== "object") continue;
@@ -82,14 +82,14 @@ export async function createComponentFrom(this: void, text: string, path: string
         } else if(element.attrs && element.attrs.template != null) {
             if(template) throw Error("Multiple template definition in "+path);
             delete element.attrs.template;
-            template = [element];
+            template = element;
         }
     }
     if(!template) throw Error("Missing template in "+path);
     const components = await Promise.all(cctx.tasks);
     const aliases = new Map(components);
     const ctx: Context = { code: '', path, aliases, slotType: "none" };
-    const returnExpression = walk(template, ctx);
+    const returnExpression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
     const fn = new Function("props", "slots", "$components", `const {${cctx.props.join(',')}} = props; ${ctx.code}; return ${returnExpression}`);
     const res = (props: Props, slots: Slots) => fn(props, slots, aliases);
     Object.defineProperty(res, "slotType", { value: ctx.slotType, writable: false });
