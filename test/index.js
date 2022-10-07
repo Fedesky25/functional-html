@@ -18,7 +18,7 @@ test("throws on empty template", async i => {
 });
 
 test("component renders", async i => {
-    const c = await componentify("test/Simple.html");
+    const c = await componentify("test/basics/SingleNode.html");
     i.truthy(c({},{}));
 });
 
