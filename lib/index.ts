@@ -240,7 +240,7 @@ function dynamicTag(this: void, node: SureNodeTag, ctx: Context) {
     delete attrs.tag;
     if(!isEmpty(attrs)) res += ",attrs:" + readAttrs(attrs);
     if(node.content) res += ",content:" + walk(node.content, ctx);
-    return res;
+    return res + '}';
 }
 
 function handleImport(this: void, node: SureNodeTag, type: SlotType, ctx: Context) {
