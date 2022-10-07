@@ -152,12 +152,10 @@ function dispatchNodeTag(node: SureNodeTag, ctx: Context) {
         case "each": return eachClause(node, ctx);
         case "conditional": return conditionalClause(node, ctx);
         case "dyn": return dynamicTag(node, ctx);
-        default: {
-            const component = ctx.aliases.get(tag);
-            if(component) return handleImport(node, component.slotType, ctx);
-            return normalTag(node, ctx);
-        }
     }
+    const component = ctx.aliases.get(tag);
+    if(component) return handleImport(node, component.slotType, ctx);
+    return normalTag(node, ctx);
 }
 
 function dispatchNodeTagOrFragment(node: SureNodeTag, fragmentDefault: string, removeAttr: string, ctx: Context) {
