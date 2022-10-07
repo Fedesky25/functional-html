@@ -151,6 +151,7 @@ function dispatchNodeTag(node: SureNodeTag, ctx: Context) {
         case "slot": return handleSlot(node, ctx);
         case "each": return eachClause(node, ctx);
         case "conditional": return conditionalClause(node, ctx);
+        case "dyn": return dynamicTag(node, ctx);
         default: {
             const component = ctx.aliases.get(tag);
             if(component) return handleImport(node, component.slotType, ctx);
@@ -234,6 +235,16 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
     return code;
 }
 
+function dynamicTag(this: void, node: SureNodeTag, ctx: Context) {
+    const attrs = node.attrs;
+    if(!attrs || !attrs.tag) throw Error("Missing tag attribute in dyn node in "+ctx.path);
+    let res = `{tag: (${attrs.tag})`;
+    delete attrs.tag;
+    if(!isEmpty(attrs)) res += ",attrs:" + readAttrs(attrs);
+    if(node.content) res += ",content:" + walk(node.content, ctx);
+    return res;
+}
+
 function handleImport(this: void, node: SureNodeTag, type: SlotType, ctx: Context) {
     const name = node.tag;
     const content = node.content;
@@ -273,11 +284,8 @@ function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx
 
 function normalTag(this: void, node: SureNodeTag, ctx: Context) {
     let res = `{tag:"${node.tag}"`;
-    if(node.content) {
-        const code = walk(node.content, ctx);
-        res +=  ",content:"+code;
-    }
     if(node.attrs) res += ",attrs:" + readAttrs(node.attrs);
+    if(node.content) res +=  ",content:" + walk(node.content, ctx);
     return res + '}';
 }
 
@@ -343,4 +351,9 @@ function quote(str: string) {
     str = str.replace(slashRegExp, "\\\\");
     if(str.indexOf("${") === -1) return '"' + str.replace(quote1RegExp, '\\"') + '"';
     else return '`' + str.replace(quote2RegExp, '\\`') + '`';
+}
+
+function isEmpty(obj: Object) {
+    for(var key in obj) return false;
+    return true;
 }
