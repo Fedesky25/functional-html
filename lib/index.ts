@@ -290,10 +290,11 @@ function normalTag(this: void, node: SureNodeTag, ctx: Context) {
 function readAttrs(this: void, attrs: Attributes) {
     let value: string|true;
     const code: string[] = [];
-    let className = (attrs.class === true || attrs.class == undefined) ? "" : attrs.class;
+    const classAttr = attrs.class
+    let className = (classAttr === true || classAttr == undefined) ? "" : classAttr;
+    delete attrs.class;
     for(var key in attrs) {
         value = attrs[key];
-        if(key === "class") continue;
         if(key.startsWith("class:")) {
             const name = key.slice(6);
             const condition = value === true ? name : value;
@@ -302,7 +303,7 @@ function readAttrs(this: void, attrs: Attributes) {
         else code.push(`"${key}":${value === true ? value : quote(value)}`);
     }
     if(className.length) code.push(`"class": ${quote(className)}||false`);
-    else if(attrs.class === true) code.push('"class":true');
+    else if(classAttr === true) code.push('"class":true');
     return '{' + code.join(',') + '}';
 }
 
