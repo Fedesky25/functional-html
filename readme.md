@@ -61,19 +61,30 @@ Results in an AST which rendered looks like:
 <nav><a href="/"><img src="./logo.png" alt="Logo"></a><ul class="links"><li>Home</li><li class="active">About</li></ul></nav><h1>About us</h1>We have 2 things to tell you:<ul><li>first</li><li>second</li></ul>
 ```
 
+## Installation
+
+```
+npm install functional-html
+```
+
 ## Syntax
 
 Each file describing a valid html component must have as direct child a single `template` tag.
 Other valid direct children are `link` tags with `rel` attribute set to `import` or `prop`.
-The HTML code inside the template has superpowers, described in the following sections.
+The HTML code inside the template has "superpowers", described in the following sections.
 
  1. [Declaring props](#declaring-props)
  2. [Value interpolation](#value-interpolation)
  4. [Toggle classes](#toggle-classes)
  3. [Conditional statement](#conditional-statement)
- 4. [Importing component](#importing-components)
- 5. [Using components](#using-components)
- 6. [Component slots](#component-slots)
+ 4. [Dynamic tag](#dynamic-tag)
+ 5. [Importing component](#importing-components)
+ 6. [Using components](#using-components)
+ 7. [Component slots](#component-slots)
+
+> **Disclaimer** - 
+> Any JavaScript expression inside the HTML component files is **not** checked. This means that any invalid or possibly-error-throwing expression will make the HTML compilation throw that error and fail.
+> There are plans of a *DEV* mode which wraps any expression and intercepts any error, but the implementation is not straightforward and some compromises must be made (especially on performance). 
 
 ### Declaring props
 
@@ -137,6 +148,18 @@ The `conditional` tag allows conditional rendering of its children. In particula
         <fragment if="true">This will never be evaluated</fragment>
     </conditional>
 </template>
+```
+
+### Dynamic tag
+
+The `dyn` node tag allows you to specify the tag name of a node at compile time. 
+
+```html
+<link rel="prop" title="name">
+
+<template>
+    <dyn tag="name || 'p'" class="text" data-attr="custom attribute">yout text</dyn>
+<template>
 ```
 
 ### Importing components
