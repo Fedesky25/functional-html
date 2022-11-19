@@ -393,13 +393,16 @@ function readAttrs(this: void, attrs: Attributes) {
 function readProps(this: void, attrs: Attributes) {
     let value: string|true;
     const code: string[] = [];
+    const spread = attrs["f:spread"];
+    delete attrs["f:spread"];
     for(var key in attrs) {
         value = attrs[key];
         if(value === true) code.push(`"${key}":true`);
         else if(value.startsWith('@')) code.push(`"${key}":(${value.slice(1).trim()})`);
         else code.push(`"${key}":${quote(value)}`);
     }
-    return '{' + code.join(',') + '}';
+    if(code.length === 0) return spread ? spread : "null";
+    return '{' + code.join(',') + (spread ? "..." + spread : '') + '}';
 }
 
 function flatten(tree: Tree) {
