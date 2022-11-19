@@ -335,7 +335,7 @@ function handleImport(this: void, node: SureNodeTag, index: number, ctx: Context
     ? (content ? walk(content, ctx) : "null") 
     : (content && content.length > 0 && content[0] !== '' && console.warn(`${name} component has no slot: skipping its content in ${ctx.path}`), "null");
     const props = node.attrs ? readProps(node.attrs) : "{}";
-    return `$components[].get("${name}")(${props},${code})`;
+    return `$components[${index}].ast(${props},${code})`;
 }
 
 function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx: Context) {
