@@ -9,7 +9,6 @@
         "module": "CommonJS"
     },
     "files": [
-        "lib/index.ts",
-        "lib/css-parser.ts"
+        "lib/index.ts"
     ]
 }

@@ -1,5 +1,5 @@
 import { join as join_path, basename, dirname } from "path";
-import { readFile } from "fs/promises";
+import { readFile, watch, type FileChangeInfo } from "fs/promises";
 import { parser, Node } from "posthtml-parser";
 
 type Tree = (Node|Node[])[];
@@ -13,23 +13,19 @@ interface SlotOptions {
     multiple: Record<string, Tree>;
 }
 type SlotType = keyof SlotOptions
-interface HTMLComponent<S extends SlotType = SlotType> {
-    (props: Props, slots: SlotOptions[S]): Tree;
-    readonly slotType: S;
-}
-type ComponentTask = Promise<[string, HTMLComponent]>;
 
 interface CreationContext {
     path: string;
     dir: string;
     props: string[];
-    tasks: ComponentTask[];
+    tasks: Promise<[string, number]>[];
 }
 
 interface Context {
     path: string;
     code: string;
-    aliases: Map<string, HTMLComponent>;
+    cmps: C2[];
+    aliases: Map<string, number>;
     slotType: keyof SlotOptions;
 }
 
@@ -46,86 +42,174 @@ const validComponentName = /[\w-]+/;
 const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
-const cache = new Map<string, Promise<HTMLComponent>>();
+type ComponentChangeListener = (component: C2, slot_changed: boolean) => any;
+type ASTBuilder<S extends SlotType> = (props: Props, slots: SlotOptions[S]) => Tree;
 
-export function componentify(path: string) {
-    let c = cache.get(path);
-    if(c) return c;
-    c = componentFromFile(path);
-    cache.set(path, c);
-    return c;
+interface HTMLComponent<S extends SlotType = SlotType> {
+    ast: ASTBuilder<S>;
+    slot: S;
 }
 
-async function componentFromFile(path: string) {
-    const file = await readFile(path, "utf-8");
-    return await createComponentFrom(file, path);
+class Component<S extends SlotType> {
+    private reactive: boolean = false;
+    ast: ASTBuilder<S>;
+    slot: SlotType;
+    props: string[];
+    deps: number[];
+
+    
 }
 
-export async function createComponentFrom(this: void, text: string, path: string): Promise<HTMLComponent> {
-    const props: string[] = []
-    const tasks: ComponentTask[] = [];
-    const cctx: CreationContext = { path, dir: dirname(path), props, tasks };
-    const base = flatten(parser(text, {
-        recognizeNoValueAttribute: true,
-        recognizeSelfClosing: true,
-    }));
-    const len = base.length;
-    let element: SureNode;
-    let template: SureNodeTag|Tree|null = null;
-    for(var i=0; i< len; i++) {
-        element = base[i];
-        if(typeof element !== "object") continue;
-        if(element.tag === "link") parseLink(element, cctx);
-        else if(element.tag === "template") {
-            if(template) throw Error("Multiple template definition in "+path);
-            if(!Array.isArray(element.content)) throw Error(`${path} has no template content`);
-            else template = element.content;
-        } else if(element.attrs && element.attrs.template != null) {
-            if(template) throw Error("Multiple template definition in "+path);
-            delete element.attrs.template;
-            template = element;
+
+
+class C2<S extends SlotType = SlotType> {
+    private readonly subscribers = new Set<ComponentChangeListener>();
+    ast: ASTBuilder<S>;
+    slot: S;
+
+    constructor(ast: ASTBuilder<S>, slot: S) {
+        this.ast = ast;
+        this.slot = slot;
+    }
+
+    update(ast: ASTBuilder<S>, slot: S) {
+        const slotchanged = slot !== this.slot;
+        this.ast = ast;
+        this.slot = slot;
+        this.subscribers.forEach(s => s(this, slotchanged));
+    }
+    sub(fn: ComponentChangeListener) {
+        this.subscribers.add(fn);
+    }
+    unsub(fn: ComponentChangeListener) {
+        return this.subscribers.delete(fn);
+    }
+}
+
+class ComponentPool {
+    private readonly name2index = new Map<string, number>();
+    private readonly waiting = new Map<string, Promise<number>>();
+    readonly resolved = new Array<C2>();
+
+    indexOf(path: string) {
+        let i = this.name2index.get(path);
+        if(i !== undefined) return Promise.resolve(i);
+        return this.waiting.get(path);
+    }
+    get(path: string) {
+        let i = this.name2index.get(path);
+        if(i !== undefined) return Promise.resolve(this.resolved[i]);
+        const p = this.waiting.get(path);
+        if(p) return new Promise<C2>(async res => res(this.resolved[await p]));
+        return;
+    }
+    async add(path: string, p: Promise<C2>) {
+        const pi = this.wrap(p);
+        this.waiting.set(path, pi);
+        const i = await pi;
+        this.waiting.delete(path);
+        return i;
+    }
+    private async wrap(p: Promise<C2>) {
+        return this.resolved.push(await p) - 1;
+    }
+}
+
+export class Builder {
+    private readonly cache = new ComponentPool();
+    private readonly root: string;
+    private readonly globals: object;
+
+    constructor(root: string, globals: object = {}) {
+        this.root = root ? root : './';
+        this.globals = globals;
+    }
+
+    componentify(path: string) {
+        let c = this.cache.get(path);
+        if(!c) {
+            c = this.fromFile(path);
+            this.cache.add(path, c);
+        }
+        return c;
+    }
+
+    private async fromFile(path: string) {
+        const file = await readFile(join_path(this.root, path), "utf-8");
+        const res = await this.from(file, path);
+        return new C2(res.ast, res.slot);
+    }
+
+    from(text: string, path: string) {
+        const cctx: CreationContext = { path, dir: dirname(path), props: [], tasks: [] };
+        const base = flatten(parser(text, {
+            recognizeNoValueAttribute: true,
+            recognizeSelfClosing: true,
+        }));
+        const len = base.length;
+        let element: SureNode;
+        let template: SureNodeTag|Tree|null = null;
+        for(var i=0; i< len; i++) {
+            element = base[i];
+            if(typeof element !== "object") continue;
+            if(element.tag === "link") this.parseLink(element, cctx);
+            else if(element.tag === "template") {
+                if(template) throw Error("Multiple template definition in "+path);
+                if(!Array.isArray(element.content)) throw Error(`${path} has no template content`);
+                else template = element.content;
+            } else if(element.attrs && element.attrs.template != null) {
+                if(template) throw Error("Multiple template definition in "+path);
+                delete element.attrs.template;
+                template = element;
+            }
+        }
+        if(!template) throw Error("Missing template in "+path);
+        return this.build(template, cctx.tasks, cctx.props, path);
+    }
+
+    private async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string) {
+        const aliases = new Map(await Promise.all(tasks));
+        const ctx: Context = { code: '', path, aliases, slotType: "none", cmps: this.cache.resolved };
+        const expression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
+        const fn = new Function("props", "slots", "globals", "$components", `const {${props.join(',')}} = props; ${ctx.code}; return ${expression}`);
+        const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.cache.resolved) as Tree;
+        return {ast,slot: ctx.slotType}
+    }
+
+    private parseLink(node: SureNodeTag, ctx: CreationContext) {
+        if(!node.attrs) return;
+        switch(node.attrs.rel) {
+            case "import": {
+                const href = node.attrs.href;
+                if(href == null || href === true) {
+                    console.warn("Missing href attribute on import link at "+ctx.path);
+                    break;
+                }
+                const name = node.attrs.as || basename(href, ".html");
+                if(name === true || !validComponentName.test(name)) throw Error(`Invalid imported component name: "${name}" in ${ctx.path}`);
+                ctx.tasks.push(this.createDependecyTuple(name, join_path(dirname(ctx.path), href)))
+                break;
+            }
+            case "prop":
+            case "attr":
+            case "attribute": {
+                const name = node.attrs.title;
+                if(name == null || name === true) {
+                    console.warn("Missing title attribute on attribute/prop link in "+ctx.path);
+                    break;
+                }
+                ctx.props.push(name);
+                break;
+            }
+            default: {
+                console.warn("Unrecognized rel attribute value in link at "+ctx.path);
+            }
         }
     }
-    if(!template) throw Error("Missing template in "+path);
-    const components = await Promise.all(cctx.tasks);
-    const aliases = new Map(components);
-    const ctx: Context = { code: '', path, aliases, slotType: "none" };
-    const returnExpression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
-    const fn = new Function("props", "slots", "$components", `const {${cctx.props.join(',')}} = props; ${ctx.code}; return ${returnExpression}`);
-    const res = (props: Props, slots: Slots) => fn(props, slots, aliases);
-    Object.defineProperty(res, "slotType", { value: ctx.slotType, writable: false });
-    return res as HTMLComponent;
-}
 
-function parseLink(this: void, node: SureNodeTag, ctx: CreationContext) {
-    if(!node.attrs) return;
-    switch(node.attrs.rel) {
-        case "import": {
-            const href = node.attrs.href;
-            if(href == null || href === true) {
-                console.warn("Missing href attribute on import link at "+ctx.path);
-                break;
-            }
-            const p = componentify(join_path(ctx.dir, href));
-            const name = node.attrs.as || basename(href, ".html");
-            if(name === true || !validComponentName.test(name)) throw Error(`Invalid imported component name: "${name}" in ${ctx.path}`);
-            ctx.tasks.push(p.then(c => ([name,c])));
-            break;
-        }
-        case "prop":
-        case "attr":
-        case "attribute": {
-            const name = node.attrs.title;
-            if(name == null || name === true) {
-                console.warn("Missing title attribute on attribute/prop link in "+ctx.path);
-                break;
-            }
-            ctx.props.push(name);
-            break;
-        }
-        default: {
-            console.warn("Unrecognized rel attribute value in link at "+ctx.path);
-        }
+    private async createDependecyTuple(name: string, path: string): Promise<[string, number]> {
+        let p = this.cache.indexOf(path) || this.cache.add(path, this.fromFile(path));
+        return [name, await p];
     }
 }
 
@@ -153,8 +237,8 @@ function dispatchNodeTag(node: SureNodeTag, ctx: Context) {
         case "conditional": return conditionalClause(node, ctx);
         case "dyn": return dynamicTag(node, ctx);
     }
-    const component = ctx.aliases.get(tag);
-    if(component) return handleImport(node, component.slotType, ctx);
+    const component_index = ctx.aliases.get(tag);
+    if(component_index) return handleImport(node, component_index, ctx);
     return normalTag(node, ctx);
 }
 
@@ -243,16 +327,17 @@ function dynamicTag(this: void, node: SureNodeTag, ctx: Context) {
     return res + '}';
 }
 
-function handleImport(this: void, node: SureNodeTag, type: SlotType, ctx: Context) {
+function handleImport(this: void, node: SureNodeTag, index: number, ctx: Context) {
     const name = node.tag;
     const content = node.content;
+    const type = ctx.cmps[index].slot;
     const code = type === "multiple" 
     ? handleImportWithMultiple(content, name, ctx) 
     : type === "single" 
     ? (content ? walk(content, ctx) : "null") 
     : (content && content.length > 0 && content[0] !== '' && console.warn(`${name} component has no slot: skipping its content in ${ctx.path}`), "null");
     const props = node.attrs ? readProps(node.attrs) : "{}";
-    return `$components.get("${name}")(${props},${code})`;
+    return `$components[].get("${name}")(${props},${code})`;
 }
 
 function handleImportWithMultiple(_content: Tree | undefined, alias: string, ctx: Context) {
