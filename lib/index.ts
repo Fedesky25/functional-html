@@ -24,7 +24,7 @@ interface CreationContext {
 interface Context {
     path: string;
     code: string;
-    cmps: C2[];
+    cmps: Component[];
     aliases: Map<string, number>;
     slotType: keyof SlotOptions;
 }
@@ -42,54 +42,40 @@ const validComponentName = /[\w-]+/;
 const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
-type ComponentChangeListener = (component: C2, slot_changed: boolean) => any;
+type ComponentChangeListener = (component: Component, slot_changed: boolean) => any;
 type ASTBuilder<S extends SlotType> = (props: Props, slots: SlotOptions[S]) => Tree;
 
-interface HTMLComponent<S extends SlotType = SlotType> {
+
+interface Component<S extends SlotType = SlotType> {
     ast: ASTBuilder<S>;
     slot: S;
+    deps: readonly number[];
 }
 
-class Component<S extends SlotType> {
-    private reactive: boolean = false;
-    ast: ASTBuilder<S>;
-    slot: SlotType;
-    props: string[];
-    deps: number[];
-
-    
-}
-
-
-
-class C2<S extends SlotType = SlotType> {
-    private readonly subscribers = new Set<ComponentChangeListener>();
-    ast: ASTBuilder<S>;
-    slot: S;
-
-    constructor(ast: ASTBuilder<S>, slot: S) {
-        this.ast = ast;
-        this.slot = slot;
+class ReactiveUnit<T> {
+    private readonly subs = new Set<(value: T) => any>();
+    private readonly controller: AbortController;
+    constructor(path: string, action: (path: string) => Promise<T>) {
+        this.controller = new AbortController();
+        this.listen(path, action);
     }
-
-    update(ast: ASTBuilder<S>, slot: S) {
-        const slotchanged = slot !== this.slot;
-        this.ast = ast;
-        this.slot = slot;
-        this.subscribers.forEach(s => s(this, slotchanged));
+    private async listen(path: string, action: (path: string) => Promise<T>) {
+        const watcher = watch(path, { signal: this.controller.signal });
+        for await (const event of watcher) {
+            if(event.eventType === "rename") continue;
+            const v = await action(path);
+            this.subs.forEach(fn => fn(v));
+        }
     }
-    sub(fn: ComponentChangeListener) {
-        this.subscribers.add(fn);
-    }
-    unsub(fn: ComponentChangeListener) {
-        return this.subscribers.delete(fn);
-    }
-}
+    abort() { this.controller.abort(); }
+    sub(callback: (value: T) => any) { this.subs.add(callback); }
+    unsub(callback: (value: T) => any) { this.subs.delete(callback); }
+}   
 
 class ComponentPool {
     private readonly name2index = new Map<string, number>();
     private readonly waiting = new Map<string, Promise<number>>();
-    readonly resolved = new Array<C2>();
+    readonly resolved = new Array<Component>();
 
     indexOf(path: string) {
         let i = this.name2index.get(path);
@@ -100,22 +86,23 @@ class ComponentPool {
         let i = this.name2index.get(path);
         if(i !== undefined) return Promise.resolve(this.resolved[i]);
         const p = this.waiting.get(path);
-        if(p) return new Promise<C2>(async res => res(this.resolved[await p]));
+        if(p) return new Promise<Component>(async res => res(this.resolved[await p]));
         return;
     }
-    async add(path: string, p: Promise<C2>) {
+    async add(path: string, p: Promise<Component>) {
         const pi = this.wrap(p);
         this.waiting.set(path, pi);
         const i = await pi;
         this.waiting.delete(path);
         return i;
     }
-    private async wrap(p: Promise<C2>) {
+    private async wrap(p: Promise<Component>) {
         return this.resolved.push(await p) - 1;
     }
 }
 
 export class Builder {
+    private readonly reacts = new Array<ReactiveUnit<Component>>();
     private readonly cache = new ComponentPool();
     private readonly root: string;
     private readonly globals: object;
@@ -133,11 +120,17 @@ export class Builder {
         }
         return c;
     }
+    
+    async watch(path: string, cb: (component: Component) => any) {
+        const i = await ( this.cache.indexOf(path) || this.cache.add(path, this.fromFile(path)) );
+        if(this.reacts[i]) return this.reacts[i].sub(cb);
+        const unit = new ReactiveUnit(join_path(this.root, path), () => this.fromFile(path));
+        this.reacts[i] = unit; 
+    }
 
     private async fromFile(path: string) {
         const file = await readFile(join_path(this.root, path), "utf-8");
-        const res = await this.from(file, path);
-        return new C2(res.ast, res.slot);
+        return await this.from(file, path);
     }
 
     from(text: string, path: string) {
@@ -167,13 +160,18 @@ export class Builder {
         return this.build(template, cctx.tasks, cctx.props, path);
     }
 
-    private async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string) {
-        const aliases = new Map(await Promise.all(tasks));
+    private async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string): Promise<Component> {
+        const aliases_entries = await Promise.all(tasks);
+        const aliases = new Map(aliases_entries);
         const ctx: Context = { code: '', path, aliases, slotType: "none", cmps: this.cache.resolved };
         const expression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
         const fn = new Function("props", "slots", "globals", "$components", `const {${props.join(',')}} = props; ${ctx.code}; return ${expression}`);
         const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.cache.resolved) as Tree;
-        return {ast,slot: ctx.slotType}
+        return {
+            ast, 
+            slot: ctx.slotType,
+            deps: aliases_entries.map(v => v[1]),
+        }
     }
 
     private parseLink(node: SureNodeTag, ctx: CreationContext) {
