@@ -1,5 +1,5 @@
 import { join as join_path, basename, dirname } from "path";
-import { readFile, watch, type FileChangeInfo } from "fs/promises";
+import { readFile } from "fs/promises";
 import { parser, Node } from "posthtml-parser";
 
 type Tree = (Node|Node[])[];
@@ -42,35 +42,13 @@ const validComponentName = /[\w-]+/;
 const lineRegExp = /\s*\n\s*/g;
 const spaceRegExp = /^\s*$/;
 
-type ComponentChangeListener = (component: Component, slot_changed: boolean) => any;
 type ASTBuilder<S extends SlotType> = (props: Props, slots: SlotOptions[S]) => Tree;
-
 
 interface Component<S extends SlotType = SlotType> {
     ast: ASTBuilder<S>;
     slot: S;
     deps: readonly number[];
 }
-
-class ReactiveUnit<T> {
-    private readonly subs = new Set<(value: T) => any>();
-    private readonly controller: AbortController;
-    constructor(path: string, action: (path: string) => Promise<T>) {
-        this.controller = new AbortController();
-        this.listen(path, action);
-    }
-    private async listen(path: string, action: (path: string) => Promise<T>) {
-        const watcher = watch(path, { signal: this.controller.signal });
-        for await (const event of watcher) {
-            if(event.eventType === "rename") continue;
-            const v = await action(path);
-            this.subs.forEach(fn => fn(v));
-        }
-    }
-    abort() { this.controller.abort(); }
-    sub(callback: (value: T) => any) { this.subs.add(callback); }
-    unsub(callback: (value: T) => any) { this.subs.delete(callback); }
-}   
 
 class ComponentPool {
     private readonly name2index = new Map<string, number>();
@@ -101,39 +79,16 @@ class ComponentPool {
     }
 }
 
-export class Builder {
-    private readonly reacts = new Array<ReactiveUnit<Component>>();
-    private readonly cache = new ComponentPool();
-    private readonly root: string;
-    private readonly globals: object;
+abstract class Scope {
+    protected readonly root: string;
+    protected readonly globals: object;
 
     constructor(root: string, globals: object = {}) {
         this.root = root ? root : './';
         this.globals = globals;
     }
 
-    componentify(path: string) {
-        let c = this.cache.get(path);
-        if(!c) {
-            c = this.fromFile(path);
-            this.cache.add(path, c);
-        }
-        return c;
-    }
-    
-    async watch(path: string, cb: (component: Component) => any) {
-        const i = await ( this.cache.indexOf(path) || this.cache.add(path, this.fromFile(path)) );
-        if(this.reacts[i]) return this.reacts[i].sub(cb);
-        const unit = new ReactiveUnit(join_path(this.root, path), () => this.fromFile(path));
-        this.reacts[i] = unit; 
-    }
-
-    private async fromFile(path: string) {
-        const file = await readFile(join_path(this.root, path), "utf-8");
-        return await this.from(file, path);
-    }
-
-    from(text: string, path: string) {
+    protected from(text: string, path: string) {
         const cctx: CreationContext = { path, dir: dirname(path), props: [], tasks: [] };
         const base = flatten(parser(text, {
             recognizeNoValueAttribute: true,
@@ -160,13 +115,13 @@ export class Builder {
         return this.build(template, cctx.tasks, cctx.props, path);
     }
 
-    private async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string): Promise<Component> {
+    protected async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string): Promise<Component> {
         const aliases_entries = await Promise.all(tasks);
         const aliases = new Map(aliases_entries);
-        const ctx: Context = { code: '', path, aliases, slotType: "none", cmps: this.cache.resolved };
+        const ctx: Context = { code: '', path, aliases, slotType: "none", cmps: this.components };
         const expression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
         const fn = new Function("props", "slots", "globals", "$components", `const {${props.join(',')}} = props; ${ctx.code}; return ${expression}`);
-        const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.cache.resolved) as Tree;
+        const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.components) as Tree;
         return {
             ast, 
             slot: ctx.slotType,
@@ -205,9 +160,34 @@ export class Builder {
         }
     }
 
-    private async createDependecyTuple(name: string, path: string): Promise<[string, number]> {
+    protected abstract createDependecyTuple(name: string, path: string): Promise<[string, number]>;
+    protected abstract get components(): Component[];
+}
+
+export class Builder extends Scope {
+    private readonly cache = new ComponentPool();
+
+    componentify(path: string) {
+        let c = this.cache.get(path);
+        if(!c) {
+            c = this.fromFile(path);
+            this.cache.add(path, c);
+        }
+        return c;
+    }
+
+    protected async fromFile(path: string) {
+        const file = await readFile(join_path(this.root, path), "utf-8");
+        return await this.from(file, path);
+    }
+
+    protected async createDependecyTuple(name: string, path: string): Promise<[string, number]> {
         let p = this.cache.indexOf(path) || this.cache.add(path, this.fromFile(path));
         return [name, await p];
+    }
+
+    protected get components(): Component<keyof SlotOptions>[] {
+        return this.cache.resolved;
     }
 }
 
