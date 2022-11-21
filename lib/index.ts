@@ -1,6 +1,8 @@
 import { join as join_path, basename, dirname, relative } from "path";
 import { readFile, watch, type FileChangeInfo } from "fs/promises";
 import { parser, Node } from "posthtml-parser";
+import IndexSet from "./IndexSet";
+import { EventEmitter } from "node:events";
 
 type Tree = (Node|Node[])[];
 
@@ -47,7 +49,7 @@ type ASTBuilder<S extends SlotType> = (props: Props, slots: SlotOptions[S]) => T
 interface Component<S extends SlotType = SlotType> {
     ast: ASTBuilder<S>;
     slot: S;
-    deps: readonly number[];
+    deps: IndexSet;
 }
 
 class ComponentPool {
@@ -122,11 +124,9 @@ abstract class Scope {
         const expression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
         const fn = new Function("props", "slots", "globals", "$components", `const {${props.join(',')}} = props; ${ctx.code}; return ${expression}`);
         const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.components) as Tree;
-        return {
-            ast, 
-            slot: ctx.slotType,
-            deps: aliases_entries.map(v => v[1]),
-        }
+        const deps = new IndexSet();
+        for(var i=0; i<aliases_entries.length; i++) deps.add(aliases_entries[i][1]);
+        return { ast, deps, slot: ctx.slotType }
     }
 
     private parseLink(node: SureNodeTag, ctx: CreationContext) {
@@ -191,7 +191,6 @@ export class Builder extends Scope {
     }
 }
 
-
 class ReactiveUnit<T> {
     private readonly subs = new Set<(value: T) => any>();
     clear() { this.subs.clear(); }
@@ -200,98 +199,143 @@ class ReactiveUnit<T> {
     unsub(callback: (value: T) => any) { this.subs.delete(callback); }
 }
 
-
-interface MaybeComponent {
-    cmp: Component|null;
-    err: Error[];
-}
-
 interface Notification {
-    error: Error|null;
-    slotchange: boolean;
-    namechange: boolean;
+    type: "ok"|"slotchange"|"error"|"rename";
     index: number;
-}
-
-class ReactiveComponent {
-    
 }
 
 export class Watcher extends Scope {
     private readonly cmps: Component[] = [];
-    private readonly reacts: EventTarget[] = [];
+    private readonly errors: (Error|null)[] = [];
+    private readonly reacts: ReactiveUnit<Notification>[] = [];
     private readonly p2i = new Map<string, number>();
 
-    // private async create(path: string) {
-    //     const unit = new EventTarget();
-    //     const index = this.reacts.push(unit)-1;
-    //     this.watch(path, index);
-    //     return unit;
-    // }
+    watch(path: string, callback: Function) {
+        this.reacts[this.get(path)].sub(e => {
 
-    // private async watch(path: string, index: number) {
-    //     let cmp = this.cmps[index];
-    //     const unit = this.reacts[index];
-    //     let my_error: Error|null = null;
-    //     const dep_errors = new Map<number,Error>();
+        })
+    }
+
+    private get(path: string) {
+        let index = this.p2i.get(path);
+        if(!index) {
+            index = this.reacts.push(new ReactiveUnit())-1;
+            this.p2i.set(path, index);
+            this.handle(path, index);
+        }
+        return index;
+    }
+
+    private async handle(path: string, index: number) {
+        const unit = this.reacts[index];
+        const dep_errors = new IndexSet();
         
+        const notify = (type: Notification["type"]) => unit.notify({type,index});
+        const propagate = async (e: Notification) => {
+            switch(e.type) {
+                case "ok":
+                    dep_errors.delete(e.index);
+                    notify(!this.errors[index] && dep_errors.isEmpty() ? "ok" : "error");
+                    break;
+                case "slotchange": 
+                    dep_errors.delete(e.index);
+                    if(dep_errors.isEmpty()) this.redo(path, index, propagate);
+                    else notify("error");
+                    break;
+                case "error":
+                    dep_errors.add(e.index);
+                    notify("error");
+                    break;
+                case "rename":
+                    this.errors[index] = Error("A dependecy was renamed");
+                    notify("error");
+                    break;
+            }
+        };
 
-    //     const propagate = async (e: Notification) => {
-            
-    //         // if(e.error) {
-    //         //     errors.set(e.index, e.error);
-    //         //     unit.notify({error: e.error, slotchange: false, index});
-    //         //     return;
-    //         // }
-    //         // errors.delete(e.index);
-    //         // if(e.slotchange) {
-
-    //         // }
-
-
-    //         // if(!new_ || new_ instanceof Error) return unit.notify(cmp, new_, index);
-    //         // if(old === new_ || old.slot === new_.slot) return unit.notify(cmp, cmp, index);
-    //         // const old_cmp = cmp;
-    //         // this.cmps[index] = cmp = await this.fromFile(path);
-    //         // unit.notify(old_cmp, cmp, index);
-    //     };
-
-    //     cmp.deps.forEach(i => this.reacts[i].sub(propagate));
-    //     const watcher = watch(join_path(this.root, path));
-
-    //     for await (const e of watcher) {
-    //         if(e.eventType === "rename") {
-    //             const old = path;
-    //             path = relative(this.root, e.filename);
-    //             this.p2i.set(path, index).delete(old);
-    //             unit.notify({ error: null,  });
-    //             unit.clear();
-    //         } else {
-    //             cmp.deps.forEach(i => this.reacts[i].unsub(propagate));
-    //             const old = cmp;
-    //             this.cmps[index] = cmp = await this.fromFile(path);
-    //             cmp.deps.forEach(i => this.reacts[i].sub(propagate));
-    //             unit.notify(old, cmp, index);
-    //         }
-    //     }
-    // }
-
-    private async fromFile(path: string): Promise<Component|Error> {
-        try {
-            const file = await readFile(join_path(this.root, path), "utf-8");
-            return await this.from(file, path);
-        } catch(err) {
-            return err;
+        await this.redo(path, index, propagate);
+        const watcher = watch(join_path(this.root, path));
+        for await (const e of watcher) {
+            if(e.eventType === "rename") {
+                const old = path;
+                path = relative(this.root, e.filename);
+                this.p2i.set(path, index).delete(old);
+                notify("rename");
+                unit.clear();
+            } else {
+                this.redo(path, index, propagate);
+            }
         }
     }
 
-    protected createDependecyTuple(name: string, path: string): Promise<[string, number]> {
+    private async redo(path: string, index: number, propagate: (e: Notification) => any) {
+        const old = this.cmps[index];
+        const unit = this.reacts[index];
+        try {
+            const cmp = await this.fromFile(path);
+            this.cmps[index] = cmp;
+            this.errors[index] = null;
+            if(old) {
+                const slotchange = old.slot !== cmp.slot;
+                IndexSet.difference(old.deps, cmp.deps).forEach(i => this.reacts[i].unsub(propagate));
+                IndexSet.difference(cmp.deps, old.deps).forEach(i => this.reacts[i].sub(propagate));
+                unit.notify({type: slotchange ? "slotchange" : "ok", index});
+            } else {
+                cmp.deps.forEach(i => this.reacts[i].unsub(propagate));
+                unit.notify({type: "ok", index});
+            }
+        } catch(err) {
+            this.errors[index] = err;
+            unit.notify({type: "error", index});
+        }
+    }
 
-        return Promise.resolve([name, 0]);
+    private getErrorsOf(index: number): Error[] {
+        const deps = this.completeDependeciesOf(index);
+        if(this.errors[index]) return [this.errors[index] as Error];
+        const res: Error[] = [];
+        let err: Error|null;
+        for(var i of deps) {
+            err = this.errors[i];
+            if(err) res.push(err);
+        }
+        return res;
+    }
+
+    private completeDependeciesOf(index: number): IndexSet {
+        const c = this.cmps[index];
+        if(!c) return new IndexSet();
+        if(c.deps.isEmpty()) return c.deps;
+        return IndexSet.union(c.deps, ...c.deps.toArray(i => this.completeDependeciesOf(i)));
+    }
+
+    private async fromFile(path: string): Promise<Component> {
+        const file = await readFile(join_path(this.root, path), "utf-8");
+        return await this.from(file, path);
+    }
+
+    protected createDependecyTuple(name: string, path: string): Promise<[string, number]> {
+        let index = this.p2i.get(path);
+        if(index === undefined) {
+            const unit = new ReactiveUnit<Notification>()
+            index = this.reacts.push(unit)-1;
+            this.p2i.set(path, index);
+            this.handle(path, index);
+            return new Promise(res => {
+                unit.sub(fn);
+                function fn(e: Notification) {
+                    if(e.type !== "ok" && e.type !== "slotchange") return;
+                    unit.unsub(fn);
+                    res([name, index as number]);
+                }
+            });
+        } else {
+            return Promise.resolve([name, index]);
+        }
     }
 
     protected get components(): Component<keyof SlotOptions>[] {
-        return []
+        return this.cmps;
     }
 }
 
