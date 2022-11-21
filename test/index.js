@@ -30,8 +30,8 @@ test("single node template", async i => {
     i.is(r, "<p>single node</p>");
 });
 
-test("caching same component", i => {
+test("caching same component", async i => {
     const c1 = builder.componentify("Simple.html");
     const c2 = builder.componentify("Simple.html");
-    i.is(c1,c2);
+    i.is(await c1, await c2);
 });
