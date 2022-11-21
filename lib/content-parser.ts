@@ -28,7 +28,7 @@ export function dispatchNodeTag(node: SureNodeTag, ctx: Context) {
         case "dyn": return dynamicTag(node, ctx);
     }
     const component_index = ctx.aliases.get(tag);
-    if(component_index) return handleImport(node, component_index, ctx);
+    if(component_index !== undefined) return handleImport(node, component_index, ctx);
     return normalTag(node, ctx);
 }
 
