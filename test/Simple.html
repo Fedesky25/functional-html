@@ -4,8 +4,8 @@
     <h1>Plain test with no imports</h1>
     <div class="box ${name ? 'present' : 'null'}">Placeholder text: ${name}</div>
     <conditional>
-        <case condition="name === 'wow'">wow wow wow</case>
-        <case condition="name === 'nasello'">nasello nasello nasello</case>
-        <default>Niente</default>
+        <fragment if="name === 'wow'">wow wow wow</fragment>
+        <fragment if="name === 'nasello'">nasello nasello nasello</fragment>
+        <fragment else>Niente</fragment>
     </conditional>
 </template>
