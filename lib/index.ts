@@ -1,5 +1,5 @@
-import { join as join_path, basename, dirname } from "path";
-import { readFile } from "fs/promises";
+import { join as join_path, basename, dirname, relative } from "path";
+import { readFile, watch, type FileChangeInfo } from "fs/promises";
 import { parser, Node } from "posthtml-parser";
 
 type Tree = (Node|Node[])[];
@@ -88,7 +88,7 @@ abstract class Scope {
         this.globals = globals;
     }
 
-    protected from(text: string, path: string) {
+    public from(text: string, path: string) {
         const cctx: CreationContext = { path, dir: dirname(path), props: [], tasks: [] };
         const base = flatten(parser(text, {
             recognizeNoValueAttribute: true,
@@ -191,6 +191,110 @@ export class Builder extends Scope {
     }
 }
 
+
+class ReactiveUnit<T> {
+    private readonly subs = new Set<(value: T) => any>();
+    clear() { this.subs.clear(); }
+    notify(value: T) { this.subs.forEach(fn => fn(value)); }
+    sub(callback: (value: T) => any) { this.subs.add(callback); }
+    unsub(callback: (value: T) => any) { this.subs.delete(callback); }
+}
+
+
+interface MaybeComponent {
+    cmp: Component|null;
+    err: Error[];
+}
+
+interface Notification {
+    error: Error|null;
+    slotchange: boolean;
+    namechange: boolean;
+    index: number;
+}
+
+class ReactiveComponent {
+    
+}
+
+export class Watcher extends Scope {
+    private readonly cmps: Component[] = [];
+    private readonly reacts: EventTarget[] = [];
+    private readonly p2i = new Map<string, number>();
+
+    // private async create(path: string) {
+    //     const unit = new EventTarget();
+    //     const index = this.reacts.push(unit)-1;
+    //     this.watch(path, index);
+    //     return unit;
+    // }
+
+    // private async watch(path: string, index: number) {
+    //     let cmp = this.cmps[index];
+    //     const unit = this.reacts[index];
+    //     let my_error: Error|null = null;
+    //     const dep_errors = new Map<number,Error>();
+        
+
+    //     const propagate = async (e: Notification) => {
+            
+    //         // if(e.error) {
+    //         //     errors.set(e.index, e.error);
+    //         //     unit.notify({error: e.error, slotchange: false, index});
+    //         //     return;
+    //         // }
+    //         // errors.delete(e.index);
+    //         // if(e.slotchange) {
+
+    //         // }
+
+
+    //         // if(!new_ || new_ instanceof Error) return unit.notify(cmp, new_, index);
+    //         // if(old === new_ || old.slot === new_.slot) return unit.notify(cmp, cmp, index);
+    //         // const old_cmp = cmp;
+    //         // this.cmps[index] = cmp = await this.fromFile(path);
+    //         // unit.notify(old_cmp, cmp, index);
+    //     };
+
+    //     cmp.deps.forEach(i => this.reacts[i].sub(propagate));
+    //     const watcher = watch(join_path(this.root, path));
+
+    //     for await (const e of watcher) {
+    //         if(e.eventType === "rename") {
+    //             const old = path;
+    //             path = relative(this.root, e.filename);
+    //             this.p2i.set(path, index).delete(old);
+    //             unit.notify({ error: null,  });
+    //             unit.clear();
+    //         } else {
+    //             cmp.deps.forEach(i => this.reacts[i].unsub(propagate));
+    //             const old = cmp;
+    //             this.cmps[index] = cmp = await this.fromFile(path);
+    //             cmp.deps.forEach(i => this.reacts[i].sub(propagate));
+    //             unit.notify(old, cmp, index);
+    //         }
+    //     }
+    // }
+
+    private async fromFile(path: string): Promise<Component|Error> {
+        try {
+            const file = await readFile(join_path(this.root, path), "utf-8");
+            return await this.from(file, path);
+        } catch(err) {
+            return err;
+        }
+    }
+
+    protected createDependecyTuple(name: string, path: string): Promise<[string, number]> {
+
+        return Promise.resolve([name, 0]);
+    }
+
+    protected get components(): Component<keyof SlotOptions>[] {
+        return []
+    }
+}
+
 function walk(this: void, tree: Tree, ctx: Context) {
     const flat = flatten(tree);
     const len = flat.length;
@@ -281,7 +385,7 @@ function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
             continue;
         }
         if(!item.attrs) throw Error("No if or else attribute on child of conditional in "+ctx.path);
-        if(_else = "else" in item.attrs) {
+        if(_else = ("else" in item.attrs)) {
             if(i+1 < len) console.warn("else in conditinal must be the last node child in "+ctx.path);
             code += dispatchNodeTagOrFragment(item, "null", "else", ctx);
             break;
@@ -381,7 +485,7 @@ function readProps(this: void, attrs: Attributes) {
         else if(value.startsWith('@')) code.push(`"${key}":(${value.slice(1).trim()})`);
         else code.push(`"${key}":${quote(value)}`);
     }
-    if(code.length === 0) return spread ? spread : "null";
+    if(code.length === 0) return spread ? spread : "{}";
     return '{' + code.join(',') + (spread ? "..." + spread : '') + '}';
 }
 
