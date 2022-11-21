@@ -3,8 +3,8 @@ const { render } = require("posthtml-render");
 const { Builder } = require("../dist/index");
 
 
-const builder = new Builder("test");
-const url = "component/test.html";
+const builder = new Builder("test/component");
+const url = "test.html";
 /**
  * Single Slot Test
  * @param {string} str 

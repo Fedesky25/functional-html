@@ -3,7 +3,7 @@ import { readFile, watch } from "fs/promises";
 import { parser } from "posthtml-parser";
 import IndexSet from "./IndexSet";
 import { walk, dispatchNodeTag, flatten } from "./content-parser";
-import type { Component, Context, Props, SlotOptions, Slots, SureNode, SureNodeTag, Tree } from "./types";
+import type { Component, Context, Props, SlotOptions, Slots, SlotType, SureNode, SureNodeTag, Tree } from "./types";
 
 const validComponentName = /[\w-]+/;
 
@@ -11,7 +11,13 @@ interface CreationContext {
     path: string;
     dir: string;
     props: string[];
-    tasks: Promise<[string, number]>[];
+    deps: [string, string][];
+}
+
+interface OuterData {
+    template: SureNodeTag | Tree;
+    deps: [alias: string, path: string][];
+    props: string[];
 }
 
 class ComponentPool {
@@ -52,8 +58,8 @@ abstract class Scope {
         this.globals = globals;
     }
 
-    public from(text: string, path: string) {
-        const cctx: CreationContext = { path, dir: dirname(path), props: [], tasks: [] };
+    protected outer(text: string, path: string): OuterData {
+        const cctx: CreationContext = { path, dir: dirname(path), props: [], deps: [] };
         const base = flatten(parser(text, {
             recognizeNoValueAttribute: true,
             recognizeSelfClosing: true,
@@ -76,19 +82,15 @@ abstract class Scope {
             }
         }
         if(!template) throw Error("Missing template in "+path);
-        return this.build(template, cctx.tasks, cctx.props, path);
+        return { template, props: cctx.props, deps: cctx.deps };
     }
 
-    protected async build(template: Tree | SureNodeTag, tasks: Promise<[string,number]>[], props: string[], path: string): Promise<Component> {
-        const aliases_entries = await Promise.all(tasks);
-        const aliases = new Map(aliases_entries);
+    protected inner(template: SureNodeTag|Tree, props: string[], aliases: Map<string, number>, path: string) {
         const ctx: Context = { code: '', path, aliases, slotType: "none", cmps: this.components };
         const expression = Array.isArray(template) ? walk(template, ctx) : dispatchNodeTag(template, ctx);
         const fn = new Function("props", "slots", "globals", "$components", `const {${props.join(',')}} = props; ${ctx.code}; return ${expression}`);
         const ast = (props: Props, slots: Slots) => fn(props, slots, this.globals, this.components) as Tree;
-        const deps = new IndexSet();
-        for(var i=0; i<aliases_entries.length; i++) deps.add(aliases_entries[i][1]);
-        return { ast, deps, slot: ctx.slotType }
+        return { ast, slot: ctx.slotType }
     }
 
     private parseLink(node: SureNodeTag, ctx: CreationContext) {
@@ -102,7 +104,7 @@ abstract class Scope {
                 }
                 const name = node.attrs.as || basename(href, ".html");
                 if(name === true || !validComponentName.test(name)) throw Error(`Invalid imported component name: "${name}" in ${ctx.path}`);
-                ctx.tasks.push(this.createDependecyTuple(name, join_path(dirname(ctx.path), href)))
+                ctx.deps.push([name, join_path(dirname(ctx.path), href)]);
                 break;
             }
             case "prop":
@@ -121,8 +123,6 @@ abstract class Scope {
             }
         }
     }
-
-    protected abstract createDependecyTuple(name: string, path: string): Promise<[string, number]>;
     protected abstract get components(): Component[];
 }
 
@@ -138,21 +138,31 @@ export class Builder extends Scope {
         return c;
     }
 
-    protected async fromFile(path: string) {
-        const file = await readFile(join_path(this.root, path), "utf-8");
-        return await this.from(file, path);
+    public async from(text: string, path: string): Promise<Component> {
+        const outer = this.outer(text, path);
+        const deps = await Promise.all(outer.deps.map(t => this.toTuple(t)));
+        const aliases = new Map(deps);
+        const inn = this.inner(outer.template, outer.props, aliases, path);
+        const isd = new IndexSet();
+        for(var i=0; i<deps.length; i++) isd.add(deps[i][1]);
+        return {ast: inn.ast, slot: inn.slot, deps: isd};
     }
 
-    protected async createDependecyTuple(name: string, path: string): Promise<[string, number]> {
-        let p = this.cache.indexOf(path) || this.cache.add(path, this.fromFile(path));
-        return [name, await p];
+    protected async fromFile(path: string): Promise<Component> {
+        const file = await readFile(join_path(this.root, path), "utf-8");
+        return this.from(file, path);
+    }
+
+    private async toTuple(alias: [string, string]): Promise<[string, number]> {
+        const p = this.cache.indexOf(alias[1]) || this.cache.add(alias[1], this.fromFile(alias[1]));
+        return [alias[0], await p];
     }
 
     protected get components(): Component<keyof SlotOptions>[] {
         return this.cache.resolved;
     }
 }
-
+/*
 class ReactiveUnit<T> {
     private readonly subs = new Set<(value: T) => any>();
     clear() { this.subs.clear(); }
@@ -166,11 +176,14 @@ interface Notification {
     index: number;
 }
 
+const dummyast = (props: Props, slots: SlotOptions[SlotType]) => ([]);
+
 export class Watcher extends Scope {
     private readonly cmps: Component[] = [];
     private readonly errors: (Error|null)[] = [];
     private readonly reacts: ReactiveUnit<Notification>[] = [];
     private readonly p2i = new Map<string, number>();
+    private readonly waiting_deps = new Array<IndexSet>();
 
     watch(path: string, callback: Function) {
         this.reacts[this.get(path)].sub(e => {
@@ -188,9 +201,17 @@ export class Watcher extends Scope {
         return index;
     }
 
+    // private create(path: string) {
+    //     const index = this.reacts.push(new ReactiveUnit())-1;
+    //     this.p2i.set(path, index);
+    //     this.handle(path, index);
+    //     return index;
+    // }
+
     private async handle(path: string, index: number) {
         const unit = this.reacts[index];
         const dep_errors = new IndexSet();
+        this.cmps[index] = {ast: dummyast, slot: "none", deps: new IndexSet()};
         
         const notify = (type: Notification["type"]) => unit.notify({type,index});
         const propagate = async (e: Notification) => {
@@ -215,7 +236,7 @@ export class Watcher extends Scope {
             }
         };
 
-        await this.redo(path, index, propagate);
+        this.redo(path, index, propagate);
         const watcher = watch(join_path(this.root, path));
         for await (const e of watcher) {
             if(e.eventType === "rename") {
@@ -234,6 +255,9 @@ export class Watcher extends Scope {
         const old = this.cmps[index];
         const unit = this.reacts[index];
         try {
+            const file = await readFile(path, "utf-8");
+            const outer = this.outer(file, path);
+
             const cmp = await this.fromFile(path);
             this.cmps[index] = cmp;
             this.errors[index] = null;
@@ -249,6 +273,31 @@ export class Watcher extends Scope {
         } catch(err) {
             this.errors[index] = err;
             unit.notify({type: "error", index});
+        }
+    }
+
+    private initDependencies(index: number, aliases: [string,string][]) {
+        const len = aliases.length;
+        let waiting = false;
+        let u: ReactiveUnit<Notification>;
+        let j: number|undefined;
+        let path: string;
+        const indexes = new Array<number>(len);
+        for(var i=0; i<len; i++) {
+            path = aliases[i][1];
+            j = this.p2i.get(path);
+            if(j === undefined) {
+                waiting = true;
+                u = new ReactiveUnit();
+                j = this.reacts.push(u)-1;
+                this.handle(path, j);
+            }
+            indexes[i] = j;
+        };
+        const deps = new IndexSet(indexes);
+        if(waiting) return { ast: dummyast, slot: "none", deps };
+        else {
+
         }
     }
 
@@ -271,7 +320,7 @@ export class Watcher extends Scope {
         return IndexSet.union(c.deps, ...c.deps.toArray(i => this.completeDependeciesOf(i)));
     }
 
-    private async fromFile(path: string): Promise<Component> {
+    protected async fromFile(path: string): Promise<Component> {
         const file = await readFile(join_path(this.root, path), "utf-8");
         return await this.from(file, path);
     }
@@ -300,3 +349,4 @@ export class Watcher extends Scope {
         return this.cmps;
     }
 }
+*/
