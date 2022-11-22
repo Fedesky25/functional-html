@@ -30,6 +30,9 @@ export default class IndexSet implements Set<number> {
      * @returns Whether the set is empty
      */
     isEmpty(): boolean { return this.num === 0; }
+    union$(other: IndexSet) { this.num |= other.num; }
+    intersect$(other: IndexSet) { this.num &= other.num; }
+    subtract$(other: IndexSet) { this.num -= this.num & other.num; }
     forEach(callbackfn: (value: number, value2: number, set: IndexSet) => void, thisArg?: any): void {
         for(var mask=1, i=0; mask > 0; (mask <<= 1, i++)) {
             if(this.num & mask) callbackfn.call(thisArg, i, i, this);
