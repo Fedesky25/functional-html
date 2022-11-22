@@ -119,6 +119,10 @@ export class Builder {
     private readonly root: string;
     private readonly globals: object;
     private readonly cache = new ComponentPool();
+    constructor(root: string = "./", globals: object = {}) {
+        this.root = root;
+        this.globals = globals;
+    }
     /**
      * Retrieves the component of a html file caching its result
      * @param path path to the .html file
@@ -149,6 +153,7 @@ export class Builder {
     }
 
     protected async fromFile(path: string): Promise<Component> {
+
         const file = await readFile(join_path(this.root, path), "utf-8");
         return this.from(file, path);
     }
@@ -170,7 +175,7 @@ const dummyast = (props: Props, slots: SlotOptions["none"]) => ([]);
  * @param globals object available in each component
  * @returns 
  */
-export function createWatcher(root: string, globals: object) {
+export function createWatcher(root: string = "./", globals: object = {}) {
     const p2i = new Map<string, number>();
     const cmps: ReactiveComponent[] = [];
 
