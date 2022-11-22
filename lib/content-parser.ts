@@ -64,7 +64,7 @@ function eachClause(this: void, node: SureNodeTag, ctx: Context) {
     }
     const attrs = node.attrs;
     if(!attrs) throw Error("Missing each clause attributes (array, item) in "+ctx.path);
-    const arrayName = attrs.array || attrs.in;
+    const arrayName = attrs.array || attrs.of;
     if(arrayName == null || arrayName === true || arrayName.length === 0) throw Error("Name of array is missing in each clause in "+ctx.path);
     let itemName = attrs.item;
     if(itemName == null) {
@@ -74,7 +74,7 @@ function eachClause(this: void, node: SureNodeTag, ctx: Context) {
     else if(itemName === true) itemName = "item";
     let indexName = attrs.index;
     if(indexName === true) indexName = "index";
-    return `${arrayName}.map(${indexName ? '('+itemName+','+indexName+')' : itemName}=>(${walk(body,ctx)}))`;
+    return `${arrayName}.map((${itemName}${indexName ? ','+indexName : ''})=>(${walk(body,ctx)}))`;
 }
 
 function conditionalClause(this: void, node: SureNodeTag, ctx: Context) {
