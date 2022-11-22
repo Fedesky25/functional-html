@@ -37,5 +37,4 @@ export type ASTBuilder<S extends SlotType> = (props: Props, slots: SlotOptions[S
 export interface Component<S extends SlotType = SlotType> {
     ast: ASTBuilder<S>;
     slot: S;
-    deps: IndexSet;
 }
