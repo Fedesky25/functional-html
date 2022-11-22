@@ -13,20 +13,21 @@ interface CSSToken {
     inside: null|string|CSSToken[];
 }
 
-function nestingEndIndex(code: string, from: number) {
-    let open = code.indexOf('{', from);
-    let close = code.indexOf('}', from);
+type Brackets = [open: string, close: string];
+function nestingEndIndex(code: string, from: number, chars: Brackets) {
+    let open = code.indexOf(chars[0], from);
+    let close = code.indexOf(chars[1], from);
     let counter = 0;
     if(open !== -1) {
         while(true) {
             if(close === -1) return -1;
             if(close < open) {
                 if(counter === 0) return close;
-                close = code.indexOf('}', close+1);
+                close = code.indexOf(chars[1], close+1);
                 counter--; 
             } else {
                 counter++;
-                open = code.indexOf('{', open+1);
+                open = code.indexOf(chars[0], open+1);
                 if(open === -1) break;
             }
         }
@@ -34,9 +35,52 @@ function nestingEndIndex(code: string, from: number) {
     while(true) {
         if(close === -1) return -1;
         if(counter === 0) return close;
-        close = code.indexOf('}', close+1);
+        close = code.indexOf(chars[1], close+1);
         counter--; 
     }
+}
+
+function rombo(code: string): SelectorGroup {
+    const len = code.length;
+    let last = 0;
+    let comma: number;
+    let open: number;
+    let close: number;
+    let selector: Selector;
+    console.log(code);
+
+    const group: SelectorGroup = [];
+    while(last < len) {
+        comma = code.indexOf(',', last);
+        if(comma === -1) comma = len;
+        open = code.indexOf('(', last);
+        selector = { parts: [], inter: [] };
+        console.log(`last=${last}  comma=${comma}`);
+
+        while(open !== -1 && open < comma) {
+            const part = code.slice(last, open);
+            console.log("found new part: ", part);
+            close = nestingEndIndex(code, open+1, ['(',')']);
+            if(close === -1) close = len;
+
+            if(part.endsWith(":not") || part.endsWith(":where") || part.endsWith("is") || part.endsWith("has")) {
+                selector.parts.push(part);
+                selector.inter.push(rombo(code.slice(open+1, close)));
+            }
+
+            last = close+1;
+            open = code.indexOf('(', last);
+            if(comma < close) {
+                comma = code.indexOf(',', last);
+                if(comma === -1) comma = len;
+            }
+        }
+        selector.parts.push(code.slice(last, comma));
+        last = comma+1;
+        group.push(selector);
+    }
+
+    return group;
 }
 
 function indefOfMin(arr: number[]) {
@@ -77,7 +121,7 @@ function simple(this: void, code: string): CSSToken[] {
         if(min !== 3) res.push(exec2token(min, e));
         else {
             const start = e.index + e[0].length+1;
-            const end = nestingEndIndex(code, start);
+            const end = nestingEndIndex(code, start, ['{','}']);
             res.push({
                 rule: "@keyframes",
                 outside: e[1].trim(),
@@ -101,7 +145,7 @@ function tokenizeCSS(code: string): CSSToken[] {
         const last = remainder.slice(0, res.index);
         Array.prototype.push.apply(pieces, simple(last));
         const start = res.index + res[0].length + 1;
-        const end = nestingEndIndex(remainder, start);
+        const end = nestingEndIndex(remainder, start, ['{','}']);
         pieces.push({
             rule: res[1],
             outside: res[2].trim(),
@@ -113,7 +157,11 @@ function tokenizeCSS(code: string): CSSToken[] {
     return pieces;
 }
 
-
+type SelectorGroup = Selector[];
+interface Selector {
+    parts: string[];
+    inter: SelectorGroup[];
+}
 const selectorDivider = /(?:\s*([>~+])\s*)|\s+/g;
 const globalSelectorPiece = /(.*)\[global\](.*)/;
 function scopeSelector(sel: string, attr: string) {
