@@ -2,8 +2,6 @@
 
 <template>
     <conditional>
-        <case if="flag">
-            <slot name="gay" />
-        </case>
+        <slot if="flag"></slot>
     </conditional>
 </template>
