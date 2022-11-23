@@ -175,7 +175,7 @@ const dummyast = (props: Props, slots: SlotOptions["none"]) => ([]);
  * @param globals object available in each component
  * @returns 
  */
-export function createWatcher(root: string = "./", globals: object = {}) {
+export function createWatcher(root: string = "./", globals: object = {}, timeout: number = 500) {
     const p2i = new Map<string, number>();
     const cmps: ReactiveComponent[] = [];
 
@@ -223,19 +223,21 @@ export function createWatcher(root: string = "./", globals: object = {}) {
         public ast: ASTBuilder<SlotType> = dummyast;
         public slot: SlotType;
         public index: number;
-        public error: Error|null = Error("Not initialized");
+        public error: Error|null = null;
         
         private deps = new IndexSet();
+        private waiting = new IndexSet();
         private faulting = new IndexSet();
         private subs = new Set<ComponentChangeHook>();
         private path: string;
         private hook: ComponentChangeHook;
+        private request: NodeJS.Timeout | null = null;
     
         constructor(index: number, path: string) {
             this.index = index;
             this.path = path;
             this.hook = this.propagate.bind(this);
-            this.build();
+            this.requestBuild();
             this.watch();
         }
         async watch() {
@@ -247,11 +249,17 @@ export function createWatcher(root: string = "./", globals: object = {}) {
                     this.notify("rename");
                     this.subs.clear();
                 } else {
-                    this.build();
+                    if(!this.waiting.isEmpty()) continue;
+                    this.requestBuild();
                 }
             }
         }
+        private requestBuild() {
+            if(this.request) clearTimeout(this.request);
+            this.request = setTimeout(() => this.build(), timeout);
+        }
         async build() {
+            this.request = null;
             try {
                 const file = await readFile(this.path, "utf-8");
                 const data = outer(file, this.path);
@@ -269,6 +277,7 @@ export function createWatcher(root: string = "./", globals: object = {}) {
                 const diff_plus = IndexSet.difference(newdeps, this.deps);
                 diff_plus.forEach(i => {
                     const c = cmps[i];
+                    if(c.ast === dummyast) this.waiting.add(i);
                     if(!c.ok) this.faulting.add(i);
                     c.sub(this.hook);
                 });
@@ -276,6 +285,7 @@ export function createWatcher(root: string = "./", globals: object = {}) {
                 const diff_minus = IndexSet.difference(this.deps, newdeps);
                 diff_minus.forEach(i => cmps[i].unsub(this.hook));
                 this.faulting.subtract$(diff_minus);
+                this.waiting.subtract$(diff_minus);
 
                 this.deps = newdeps;
                 if(!this.faulting.isEmpty()) return; // if it depends on other components 
@@ -292,27 +302,29 @@ export function createWatcher(root: string = "./", globals: object = {}) {
             }
         }
         private propagate(state: ComponentChangeType, index: number) {
+            let ok = false;
+            const was_waiting = this.waiting.delete(index);
             switch(state) {
                 case "ok":
                     this.faulting.delete(index);
-                    this.notify(this.ok ? "ok" : "error");
+                    ok = this.ok;
                     break;
                 case "slotchange":
                     this.faulting.delete(index);
-                    if(this.faulting.isEmpty()) this.build();
-                    else this.notify("error");
+                    if(this.faulting.isEmpty()) return this.requestBuild();
                     break;
                 case "error":
                     this.faulting.add(index);
-                    this.notify("error");
                     break;
                 case "rename":
                     this.error = Error("A dependency was renamed");
                     this.faulting.delete(index);
                     this.deps.delete(index);
-                    this.notify("error");
                     break;
             }
+            if(!this.waiting.isEmpty()) return;
+            if(ok && was_waiting) this.requestBuild();
+            else this.notify(ok ? "ok" : "error");
         }
         private notify(state: ComponentChangeType) {
             this.subs.forEach(fn => fn(state, this.index));
