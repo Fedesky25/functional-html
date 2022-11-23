@@ -47,9 +47,11 @@ An `index.html` file:
 By running the following
 
 ```js
-import { componentify } from "html-components";
+import { Builder } from "html-components";
 
-const index = await componentify("./index.html");
+
+const builder = new Builder();
+const index = await builder.componentify("./index.html");
 index({
     things: ["first", "second"]
 });
@@ -67,6 +69,87 @@ Results in an AST which rendered looks like:
 npm install functional-html
 ```
 
+## API 
+
+### Builder
+
+Class that acts as a builder of component functions. It caches components to avoid parsing the same depencies twice.
+
+#### constructor
+
+```js
+import { Builder } from "functional-html";
+
+const builder = new Builder(root, globals);
+```
+
+| argument | description | default |
+| :------: | ----------- | :-----------: |
+| `root`   | Root path to all your components | `"/"` |
+| `globals`| Object available to every component | `{}` |
+
+#### methods
+
+All public methods return promises that resove into a component object having properties: 
+
+ - `slot`: the slot type of the component (see [Component slots](#component-slots))
+ - `ast`: the component function 
+
+```js 
+const { ast, slot } = await builder.componentify(path);
+const { ast, slot } = await builder.from(text, path);
+```
+
+| method | description |
+| :----: | ----------- |
+| `componentify` | parses the html file with the provided path and recursively all its dependecies |
+| `from` | parses the provided text as if it was a file with the provided path, i.e. all dependencies are resolved from that path |
+
+### Watcher
+
+Watching files and re-parsing them is also supported.
+
+```js
+import { createWatcher } from "functional-html"
+
+const watch = createWatcher(root, globals, timeout);
+
+watch(
+    path,
+    (ast, slot) => {
+        // do stuff with component function
+    },
+    (errors) => {
+        // do stuff with encountered errors
+    }
+);
+```
+
+### createWatcher
+
+| argument | description | default |
+| :------: | ----------- | :-----------: |
+| `root`   | Root path to all your components | `"/"` |
+| `globals`| Object available to every component | `{}` |
+| `timeout`| How many ms the parsing process of a file is debounced when changed | `500` |
+
+### watch function 
+
+| argument | description |
+| :------: | ----------- |
+| `path`   | Root path to all your components |
+| `callback`| Callback function invoked with the component function and slot type when all went well after a file change |
+| `onerror`| Callback function invoked with the list of errors (instances of `Error`) encountered when parsing files |
+
+## Component function
+
+The function compiled from a functional HTML component. It returns valid PostHTML [Abstract Syntax Tree](https://www.wikiwand.com/en/Abstract_syntax_tree) (AST), which can be then rendered.
+
+| argument | description | default |
+| :------: | ----------- | :-----------: |
+| `props`  | Props object passed to the component |  |
+| `slots`  | Slots object (see [Component slots](#component-slots)) | `undefined` |
+
 ## Syntax
 
 Each file describing a valid html component must have as direct child a single `template` tag.
@@ -78,9 +161,10 @@ The HTML code inside the template has "superpowers", described in the following 
  4. [Toggle classes](#toggle-classes)
  3. [Conditional statement](#conditional-statement)
  4. [Dynamic tag](#dynamic-tag)
- 5. [Importing component](#importing-components)
- 6. [Using components](#using-components)
- 7. [Component slots](#component-slots)
+ 5. [Each statement](#each-statement)
+ 6. [Importing component](#importing-components)
+ 7. [Using components](#using-components)
+ 8. [Component slots](#component-slots)
 
 > **Disclaimer** - 
 > Any JavaScript expression inside the HTML component files is **not** checked. This means that any invalid or possibly-error-throwing expression will make the HTML compilation throw that error and fail.
@@ -162,6 +246,29 @@ The `dyn` node tag allows you to specify the tag name of a node at compile time.
 <template>
 ```
 
+### Each statement 
+
+The `each` tag allows looping though an array and rendering its children for each item.
+
+```html
+<link rel="prop" title="cards">
+<template>
+    <each item="card" index="i" of="cards">
+        <div class="card" class:card-colored="card.colored">
+            <h3 class="card__title">${card.title}</h3>
+            <p class="card__text">${card.text}</p>
+            <span>#${i}</span>
+        </div>
+    </each>
+</template>
+```
+
+| attribute | description | default | can be omitted? |
+| :-------: | ----------- | :-----: | :-------: |
+| `of`, `array` | expression of the array | | no |
+| `item` | name of the item of the array| item | if `index` is not |
+| `index` | index of the item of the array| index | if `item` is not |
+
 ### Importing components
 
 Importing is done though a `link` tag with rel attribute set to `import`:
@@ -175,17 +282,27 @@ In the first case the component will be available in the template with name `com
 
 ### Using components
 
-Imported components are treated as HTML tags, but with the passibility to pass them props (and slots, next section). Props can be passed as if they were attribute of a normal tag: by default they are strings, but you can pass any javascript value by using the `@` charachter.
+Imported components are treated as HTML tags, but with the passibility to pass them props (and slots, next section). Props can be passed as if they were attribute of a normal tag: by default they are strings, but you can pass any javascript value by using the `@` character.
 
 ```html
 <link rel="import" href="./Navigation.html">
+<link rel="import" href="./Complex.html">
 <link rel="import" href="./Card.html">
 <link rel="import" href="./Footer.html">
+
 <link rel="prop" title="number">
 <link rel="prop" title="type">
+<link rel="prop" title="complex_data">
+
 <template>
     <Navigation page="blog" />
     <!-- props = { page = "blog" } -->
+
+    <Complex f:spread="complex_data" />
+    <!-- props = complex_data -->
+    
+    <Complex f:spread="complex_data" property="4" />
+    <!-- props = { property: "4", ...complex_data } -->
     
     <Card title="${type}: Who are we?" authors="@ ['Beppe', 'Giovanna']" />
     <!-- props = { title: `${type}: Who are we?`, authors: ['Bepper', 'Giovanna'] } -->
@@ -221,37 +338,31 @@ Declaring an empty `fragment` node (even self closing) is equivalent to discardi
 <!-- Cool-link.html -->
 <link rel="prop" title="href">
 <link rel="prop" title="text">
-<template>
-    <a href="${href}">
-        <div class="border-1"></div>
-        <span class="text">${text}</span>
-        <div class="border-2"></div>
-    </a>
-<template>
+<a template href="${href}">
+    <div class="border-1"></div>
+    <span class="text">${text}</span>
+    <div class="border-2"></div>
+</a>
 
 <!-- Single.html -->
 <link rel="prop" title="twice">
 <template>
     <slot />
     <conditional>
-        <case if="twice">
-            <slot>
-                <p>This slot has a default value, while the first one didn't</p>
-            </slot>
-        </case>
+        <slot if="twice">
+            <p>This slot has a default value, while the first one didn't</p>
+        </slot>
     </conditional>
 <template>
 
 <!-- Article.html -->
 <link rel="prop" title="twice">
-<template>
-    <div class="container">
-        <h3><slot name="title" /></h3>
-        <div class="text">
-            <slot name="text">There's nothing here</slot>
-        </div>
+<div template class="container">
+    <h3><slot name="title" /></h3>
+    <div class="text">
+        <slot name="text">There's nothing here</slot>
     </div>
-<template>
+</div>
 
 <!-- page.html -->
 <link rel="import" href="./Component.html">
