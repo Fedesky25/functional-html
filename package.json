@@ -1,6 +1,6 @@
 {
   "name": "functional-html",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Use HTML/XML files as components with js expression",
   "types": "dist/index.d.ts",
   "exports": {
