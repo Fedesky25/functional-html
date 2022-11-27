@@ -1,4 +1,4 @@
-import { join as join_path, basename, dirname } from "path";
+import { join as join_path, basename, dirname, resolve } from "path";
 import { readFile, watch as watchFile } from "fs/promises";
 import { parser } from "posthtml-parser";
 import IndexSet from "./IndexSet";
@@ -153,8 +153,8 @@ export class Builder {
     }
 
     protected async fromFile(path: string): Promise<Component> {
-
-        const file = await readFile(join_path(this.root, path), "utf-8");
+        // console.log(`Reading ${resolve(this.root, path)}`);
+        const file = await readFile(resolve(this.root, path), "utf-8");
         return this.from(file, path);
     }
 
@@ -261,7 +261,7 @@ export function createWatcher(root: string = "./", globals: object = {}, timeout
         async build() {
             this.request = null;
             try {
-                const file = await readFile(this.path, "utf-8");
+                const file = await readFile(resolve(this.path), "utf-8");
                 const data = outer(file, this.path);
 
                 const newdeps = new IndexSet();
